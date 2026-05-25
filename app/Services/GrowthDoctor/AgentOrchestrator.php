@@ -1,0 +1,518 @@
+<?php
+
+namespace App\Services\GrowthDoctor;
+
+use App\Services\GrowthDoctor\Agents\ActivationAgent;
+use App\Services\GrowthDoctor\Agents\AiAdsAgent;
+use App\Services\GrowthDoctor\Agents\FinalDecisionAgent;
+use App\Services\GrowthDoctor\Agents\DecisionScenarioSimulator;
+use App\Services\GrowthDoctor\Agents\AiAgentClient;
+use App\Services\GrowthDoctor\Agents\MonetizationAgent;
+use App\Services\GrowthDoctor\Agents\RetentionAgent;
+use App\Services\GrowthDoctor\Agents\TomorrowForecastAgent;
+use App\Services\GrowthDoctor\Agents\VersionAgent;
+use App\Services\GrowthDoctor\RunProgressStore;
+
+class AgentOrchestrator
+{
+    private $activationAgent;
+    private $retentionAgent;
+    private $monetizationAgent;
+    private $versionAgent;
+    private $adsAgent;
+    private $tomorrowForecastAgent;
+    private $finalDecisionAgent;
+    private $decisionScenarioSimulator;
+    private $aiAgentClient;
+    private $runProgressStore;
+
+    public function __construct(
+        ActivationAgent $activationAgent,
+        RetentionAgent $retentionAgent,
+        MonetizationAgent $monetizationAgent,
+        VersionAgent $versionAgent,
+        AiAdsAgent $adsAgent,
+        TomorrowForecastAgent $tomorrowForecastAgent,
+        FinalDecisionAgent $finalDecisionAgent,
+        DecisionScenarioSimulator $decisionScenarioSimulator,
+        AiAgentClient $aiAgentClient,
+        RunProgressStore $runProgressStore
+    ) {
+        $this->activationAgent = $activationAgent;
+        $this->retentionAgent = $retentionAgent;
+        $this->monetizationAgent = $monetizationAgent;
+        $this->versionAgent = $versionAgent;
+        $this->adsAgent = $adsAgent;
+        $this->tomorrowForecastAgent = $tomorrowForecastAgent;
+        $this->finalDecisionAgent = $finalDecisionAgent;
+        $this->decisionScenarioSimulator = $decisionScenarioSimulator;
+        $this->aiAgentClient = $aiAgentClient;
+        $this->runProgressStore = $runProgressStore;
+    }
+
+    public function run(array $metricsContext, ?string $trackedRunId = null): array
+    {
+        $runId = $trackedRunId ?: $this->makeRunId();
+        $isTracked = $trackedRunId !== null;
+        $interactionLog = [];
+
+        $specialistRequestDefinitions = [
+            'ai_activation_agent' => [
+                'label' => 'AI Activation Agent',
+                'step_key' => 'activation_agent',
+                'running_note' => 'Activation Agent is analyzing activation bottlenecks.',
+                'done_note' => 'Activation Agent completed.',
+                'shared_context' => ['checkpoint_meta', 'activation_metrics', 'version_metrics'],
+                'request' => $this->activationAgent->buildRequest($metricsContext),
+            ],
+            'ai_retention_agent' => [
+                'label' => 'AI Retention Agent',
+                'step_key' => 'retention_agent',
+                'running_note' => 'Retention Agent is analyzing D0, D1, and early habit risk.',
+                'done_note' => 'Retention Agent completed.',
+                'shared_context' => ['checkpoint_meta', 'retention_metrics'],
+                'request' => $this->retentionAgent->buildRequest($metricsContext),
+            ],
+            'ai_monetization_agent' => [
+                'label' => 'AI Monetization Agent',
+                'step_key' => 'monetization_agent',
+                'running_note' => 'Monetization Agent is analyzing paywall and purchase signal.',
+                'done_note' => 'Monetization Agent completed.',
+                'shared_context' => ['checkpoint_meta', 'monetization_metrics', 'activation_metrics', 'version_metrics'],
+                'request' => $this->monetizationAgent->buildRequest($metricsContext),
+            ],
+            'ai_version_agent' => [
+                'label' => 'AI Version Agent',
+                'step_key' => 'version_agent',
+                'running_note' => 'Version Agent is analyzing release and version risk.',
+                'done_note' => 'Version Agent completed.',
+                'shared_context' => ['checkpoint_meta', 'version_metrics', 'activation_metrics', 'monetization_metrics'],
+                'request' => $this->versionAgent->buildRequest($metricsContext),
+            ],
+            'ai_ads_agent' => [
+                'label' => 'AI Ads Agent',
+                'step_key' => 'ads_agent',
+                'running_note' => 'Ads Agent is analyzing acquisition cost, campaign lifecycle, and reset campaign context.',
+                'done_note' => 'Ads Agent completed.',
+                'shared_context' => ['checkpoint_meta', 'ads_metrics', 'activation_metrics', 'retention_metrics', 'rule_based_decision'],
+                'request' => $this->adsAgent->buildRequest($metricsContext),
+            ],
+            'ai_tomorrow_forecast_agent' => [
+                'label' => 'Tomorrow Forecast Agent',
+                'step_key' => 'tomorrow_forecast_agent',
+                'running_note' => 'Tomorrow Forecast Agent is interpreting quantitative forecast and next-day risk.',
+                'done_note' => 'Tomorrow Forecast Agent completed.',
+                'shared_context' => ['checkpoint_meta', 'tomorrow_forecast_metrics', 'activation_metrics', 'retention_metrics', 'monetization_metrics'],
+                'request' => $this->tomorrowForecastAgent->buildRequest($metricsContext),
+            ],
+        ];
+
+        foreach ($specialistRequestDefinitions as $definition) {
+            $this->logInteraction($interactionLog, $runId, 'orchestrator', $definition['label'], 'agent_request', [
+                'shared_context' => $definition['shared_context'],
+                'execution_mode' => 'parallel_fan_out',
+            ]);
+            $this->markRunningIfTracked($isTracked, $runId, $definition['step_key'], $definition['running_note']);
+        }
+
+        $completedSpecialistKeys = [];
+
+        try {
+            $parallelRequests = [];
+
+            foreach ($specialistRequestDefinitions as $key => $definition) {
+                $parallelRequests[$key] = $definition['request'];
+            }
+
+            $specialistAgents = $this->aiAgentClient->callMany(
+                $parallelRequests,
+                function (string $key, array $agentOutput) use (&$interactionLog, &$completedSpecialistKeys, $runId, $isTracked, $specialistRequestDefinitions) {
+                    if (!isset($specialistRequestDefinitions[$key])) {
+                        return;
+                    }
+
+                    if (isset($completedSpecialistKeys[$key])) {
+                        return;
+                    }
+
+                    $definition = $specialistRequestDefinitions[$key];
+                    $completedSpecialistKeys[$key] = true;
+
+                    $this->markDoneIfTracked($isTracked, $runId, $definition['step_key'], $agentOutput, $definition['done_note']);
+                    $this->logAgentResponse($interactionLog, $runId, $definition['label'], $agentOutput);
+                }
+            );
+        } catch (\Throwable $e) {
+            foreach ($specialistRequestDefinitions as $definition) {
+                $this->markFailedIfTracked($isTracked, $runId, $definition['step_key'], $e);
+            }
+            throw $e;
+        }
+
+        foreach ($specialistRequestDefinitions as $key => $definition) {
+            $agentOutput = $specialistAgents[$key] ?? [
+                'agent' => $definition['label'],
+                'status' => 'missing_result',
+                'error' => 'Parallel specialist result missing.',
+            ];
+
+            $specialistAgents[$key] = $agentOutput;
+
+            if (!isset($completedSpecialistKeys[$key])) {
+                $completedSpecialistKeys[$key] = true;
+                $this->markDoneIfTracked($isTracked, $runId, $definition['step_key'], $agentOutput, $definition['done_note']);
+                $this->logAgentResponse($interactionLog, $runId, $definition['label'], $agentOutput);
+            }
+        }
+
+        $aiActivationAgent = $specialistAgents['ai_activation_agent'];
+        $aiRetentionAgent = $specialistAgents['ai_retention_agent'];
+        $aiMonetizationAgent = $specialistAgents['ai_monetization_agent'];
+        $aiVersionAgent = $specialistAgents['ai_version_agent'];
+        $aiAdsAgent = $specialistAgents['ai_ads_agent'];
+        $aiTomorrowForecastAgent = $specialistAgents['ai_tomorrow_forecast_agent'];
+
+        $forecastEvaluations = $metricsContext['forecast_evaluations']
+            ?? ($metricsContext['evaluations']['forecast_evaluations'] ?? []);
+
+        $forecastCalibration = $metricsContext['forecast_model_calibration']
+            ?? ($metricsContext['evaluations']['forecast_model_calibration'] ?? []);
+
+        if (!empty($forecastEvaluations)) {
+            $this->logInteraction($interactionLog, $runId, 'Forecast Evaluation Service', 'AI Final Decision Agent', 'evaluation_output_shared', [
+                'status' => $forecastEvaluations['status'] ?? null,
+                'actual_data_available_until' => $forecastEvaluations['actual_data_available_until'] ?? null,
+                'evaluated_count' => $forecastEvaluations['evaluated_count'] ?? 0,
+                'pending_count' => $forecastEvaluations['pending_count'] ?? 0,
+                'skipped_count' => $forecastEvaluations['skipped_count'] ?? 0,
+                'latest_quality' => $this->extractLatestForecastEvaluationQuality($forecastEvaluations),
+            ]);
+        }
+
+        if (!empty($forecastCalibration)) {
+            $this->logInteraction($interactionLog, $runId, 'Forecast Calibration Service', 'AI Final Decision Agent', 'calibration_output_shared', [
+                'status' => $forecastCalibration['status'] ?? null,
+                'evaluations_used' => $forecastCalibration['evaluations_used'] ?? 0,
+                'overall_mature_hit_rate' => $forecastCalibration['overall_mature_hit_rate'] ?? null,
+                'trust_score' => $forecastCalibration['trust_score']['updated_score'] ?? null,
+                'trust_interpretation' => $forecastCalibration['trust_score']['interpretation'] ?? null,
+                'forecast_role' => $forecastCalibration['decision_instruction']['forecast_role'] ?? null,
+                'systematic_bias_detected' => $forecastCalibration['bias_detection']['systematic_bias_detected'] ?? null,
+            ]);
+        }
+
+        foreach ($specialistAgents as $key => $agentOutput) {
+            $this->logInteraction($interactionLog, $runId, $agentOutput['agent'] ?? $key, 'AI Final Decision Agent', 'agent_output_shared', [
+                'source_key' => $key,
+                'status' => $agentOutput['status'] ?? null,
+                'result_status' => $agentOutput['result']['status'] ?? null,
+                'execution_mode' => $agentOutput['execution']['mode'] ?? null,
+                'parallel_pool' => $agentOutput['execution']['parallel_pool'] ?? null,
+                'summary' => $this->extractAgentSummary($agentOutput),
+            ]);
+        }
+
+        $finalDecisionContext = [
+            'metrics_context' => $metricsContext,
+            'specialist_agents' => $specialistAgents,
+            'evaluations' => [
+                'forecast_evaluations' => $forecastEvaluations,
+                'forecast_model_calibration' => $forecastCalibration,
+            ],
+            'forecast_model_calibration' => $forecastCalibration,
+        ];
+
+        $this->logInteraction($interactionLog, $runId, 'orchestrator', 'AI Final Decision Agent', 'agent_request', [
+            'shared_context' => ['metrics_context', 'specialist_agents', 'evaluations.forecast_evaluations', 'evaluations.forecast_model_calibration'],
+            'execution_mode' => 'sequential_fan_in_after_parallel_specialists',
+            'context_trace' => $this->buildFinalDecisionContextTrace($finalDecisionContext),
+        ]);
+        $this->markRunningIfTracked($isTracked, $runId, 'final_decision_agent', 'Final Decision Agent is resolving conflict and producing operating decision.');
+        try {
+            $aiDecisionAgent = $this->finalDecisionAgent->run($finalDecisionContext);
+            $this->markDoneIfTracked($isTracked, $runId, 'final_decision_agent', $aiDecisionAgent, 'Final Decision Agent completed.');
+        } catch (\Throwable $e) {
+            $this->markFailedIfTracked($isTracked, $runId, 'final_decision_agent', $e);
+            throw $e;
+        }
+        $this->logAgentResponse($interactionLog, $runId, 'AI Final Decision Agent', $aiDecisionAgent);
+
+        $scenarioSimulationContext = [
+            'metrics_context' => $metricsContext,
+            'tomorrow_forecast_metrics' => $metricsContext['tomorrow_forecast_metrics'] ?? ($aiTomorrowForecastAgent['result']['tomorrow_forecast_metrics'] ?? []),
+            'guardrail_policy' => $metricsContext['guardrail_policy'] ?? [],
+            'final_decision' => $aiDecisionAgent,
+            'ai_final_decision_agent' => $aiDecisionAgent,
+            'specialist_agents' => $specialistAgents,
+            'ai_tomorrow_forecast_agent' => $aiTomorrowForecastAgent,
+            'ai_ads_agent' => $aiAdsAgent,
+            'evaluations' => [
+                'forecast_evaluations' => $forecastEvaluations,
+                'forecast_model_calibration' => $forecastCalibration,
+            ],
+            'forecast_model_calibration' => $forecastCalibration,
+        ];
+
+        $this->logInteraction($interactionLog, $runId, 'AI Final Decision Agent', 'Decision Scenario Simulator', 'final_decision_shared', [
+            'shared_context' => ['final_decision', 'metrics_context.tomorrow_forecast_metrics', 'specialist_agents', 'evaluations'],
+            'execution_mode' => 'sequential_after_final_decision',
+            'purpose' => 'compare baseline forecast against recommended action scenario',
+            'context_trace' => $this->buildScenarioSimulationContextTrace($scenarioSimulationContext),
+        ]);
+        $this->markRunningIfTracked($isTracked, $runId, 'decision_scenario_simulator', 'Decision Scenario Simulator is comparing baseline versus recommended action.');
+        try {
+            $decisionScenarioSimulation = $this->decisionScenarioSimulator->run($scenarioSimulationContext);
+            $this->markDoneIfTracked($isTracked, $runId, 'decision_scenario_simulator', $decisionScenarioSimulation, 'Decision Scenario Simulator completed.');
+        } catch (\Throwable $e) {
+            $decisionScenarioSimulation = [
+                'agent' => 'Decision Scenario Simulator',
+                'status' => 'failed',
+                'error' => $e->getMessage(),
+                'result' => [
+                    'simulation_type' => 'baseline_vs_recommended_action',
+                    'status' => 'unavailable',
+                    'summary' => 'Decision scenario simulation unavailable; use final decision and deterministic guardrail policy only.',
+                ],
+            ];
+            $this->markFailedIfTracked($isTracked, $runId, 'decision_scenario_simulator', $e);
+        }
+        $this->logAgentResponse($interactionLog, $runId, 'Decision Scenario Simulator', $decisionScenarioSimulation);
+
+        return [
+            'run_id' => $runId,
+            'agents' => [
+                'ai_activation_agent' => $aiActivationAgent,
+                'ai_retention_agent' => $aiRetentionAgent,
+                'ai_monetization_agent' => $aiMonetizationAgent,
+                'ai_version_agent' => $aiVersionAgent,
+                'ai_ads_agent' => $aiAdsAgent,
+                'ai_tomorrow_forecast_agent' => $aiTomorrowForecastAgent,
+                'ai_final_decision_agent' => $aiDecisionAgent,
+                'decision_scenario_simulator' => $decisionScenarioSimulation,
+            ],
+            'interaction_log' => $interactionLog,
+            'workflow' => [
+                'name' => 'AI Growth Doctor Multi-Agent Workflow',
+                'mode' => 'parallel_specialist_fan_out_then_final_decision_and_scenario_simulation',
+                'steps' => [
+                    '1. Metric extraction builds shared metrics_context.',
+                    '2. Independent specialist agents run as a parallel fan-out evidence layer: activation, retention, monetization, version risk, ads acquisition/campaign lifecycle, and tomorrow forecast interpretation.',
+                    '3. Orchestrator collects specialist outputs, deterministic guardrail policy, forecast evaluation results, and forecast calibration memory into one decision context.',
+                    '4. Final Decision Agent runs sequentially after all specialist evidence is available and resolves consensus/conflicts into one business operating decision.',
+                    '5. Decision Scenario Simulator runs sequentially after the final decision and compares baseline no-major-intervention forecast against the recommended action scenario.',
+                ],
+                'parallelization_note' => 'Specialist agents are independent and run through AiAgentClient::callMany parallel HTTP pool. Final Decision Agent remains sequential because it depends on the complete specialist evidence bundle. Decision Scenario Simulator also remains sequential because it depends on the final recommended action.',
+            ],
+        ];
+    }
+
+    private function markRunningIfTracked(bool $isTracked, string $runId, string $stepKey, ?string $note = null): void
+    {
+        if (!$isTracked) {
+            return;
+        }
+
+        $this->runProgressStore->markRunning($runId, $stepKey, $note);
+    }
+
+    private function markDoneIfTracked(bool $isTracked, string $runId, string $stepKey, $stepResult = null, ?string $note = null): void
+    {
+        if (!$isTracked) {
+            return;
+        }
+
+        $this->runProgressStore->markDone($runId, $stepKey, $stepResult, $note);
+    }
+
+    private function markFailedIfTracked(bool $isTracked, string $runId, string $stepKey, $error): void
+    {
+        if (!$isTracked) {
+            return;
+        }
+
+        $this->runProgressStore->markFailed($runId, $stepKey, $error);
+    }
+
+    private function makeRunId(): string
+    {
+        return 'agd_' . date('Ymd_His') . '_' . substr(sha1((string) microtime(true)), 0, 8);
+    }
+
+    private function logAgentResponse(array &$interactionLog, string $runId, string $agentName, array $agentOutput): void
+    {
+        $this->logInteraction($interactionLog, $runId, $agentName, 'orchestrator', 'agent_response', [
+            'status' => $agentOutput['status'] ?? null,
+            'model' => $agentOutput['model'] ?? null,
+            'cache_hit' => $agentOutput['cache']['hit'] ?? null,
+            'result_status' => $agentOutput['result']['status'] ?? null,
+            'summary' => $this->extractAgentSummary($agentOutput),
+        ]);
+    }
+
+    private function logInteraction(array &$interactionLog, string $runId, string $from, string $to, string $messageType, array $payload = []): void
+    {
+        $interactionLog[] = [
+            'sequence' => count($interactionLog) + 1,
+            'run_id' => $runId,
+            'timestamp' => date('Y-m-d H:i:s'),
+            'from' => $from,
+            'to' => $to,
+            'message_type' => $messageType,
+            'payload' => $payload,
+        ];
+    }
+
+    private function extractAgentSummary(array $agentOutput): ?string
+    {
+        $result = $agentOutput['result'] ?? [];
+
+        $summary = $agentOutput['summary']
+            ?? $agentOutput['result_summary']
+            ?? ($result['summary'] ?? null)
+            ?? ($result['executive_summary'] ?? null)
+            ?? ($result['diagnosis'] ?? null)
+            ?? ($result['main_diagnosis'] ?? null)
+            ?? ($result['main_predicted_risk'] ?? null)
+            ?? ($result['decision_impact_today'] ?? null)
+            ?? ($result['baseline_vs_intervention_comparison']['decision_implication'] ?? null)
+            ?? ($result['scenario_with_intervention']['summary'] ?? null)
+            ?? ($agentOutput['diagnosis'] ?? null)
+            ?? ($agentOutput['error'] ?? null);
+
+        if (is_array($summary)) {
+            $summary = json_encode($summary, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+        }
+
+        if ($summary === null) {
+            return null;
+        }
+
+        $summary = trim((string) $summary);
+
+        return $summary !== '' ? $summary : null;
+    }
+
+    private function buildFinalDecisionContextTrace(array $context): array
+    {
+        $metricsContext = $context['metrics_context'] ?? [];
+        $versionMetrics = $metricsContext['version_metrics'] ?? [];
+        $adsMetrics = $metricsContext['ads_metrics'] ?? [];
+        $guardrailPolicy = $metricsContext['guardrail_policy'] ?? [];
+        $tomorrowForecastMetrics = $metricsContext['tomorrow_forecast_metrics'] ?? [];
+        $specialistAgents = $context['specialist_agents'] ?? [];
+        $evaluations = $context['evaluations'] ?? [];
+
+        return [
+            'metrics_keys' => array_keys($metricsContext),
+            'version_metrics' => [
+                'has_versions_full_list' => isset($versionMetrics['versions']),
+                'versions_count' => is_array($versionMetrics['versions'] ?? null) ? count($versionMetrics['versions']) : 0,
+                'top_versions_count' => is_array($versionMetrics['top_versions'] ?? null) ? count($versionMetrics['top_versions']) : 0,
+                'has_compact_version_context' => isset($versionMetrics['compact_version_context']),
+                'compact_relevant_versions_count' => is_array($versionMetrics['compact_version_context']['relevant_versions'] ?? null) ? count($versionMetrics['compact_version_context']['relevant_versions']) : 0,
+                'compact_release_candidate_versions_count' => is_array($versionMetrics['compact_version_context']['release_candidate_versions'] ?? null) ? count($versionMetrics['compact_version_context']['release_candidate_versions']) : 0,
+                'legacy_context_versions_count' => $versionMetrics['compact_version_context']['legacy_context_summary']['legacy_or_context_versions_count'] ?? null,
+            ],
+            'ads_metrics' => [
+                'campaigns_count' => is_array($adsMetrics['campaigns'] ?? null) ? count($adsMetrics['campaigns']) : 0,
+                'campaign_names' => is_array($adsMetrics['campaigns'] ?? null) ? array_keys($adsMetrics['campaigns']) : [],
+                'ads_verdict' => $adsMetrics['ads_verdict']['decision'] ?? null,
+            ],
+            'guardrail_policy' => [
+                'policy_version' => $guardrailPolicy['policy_version'] ?? null,
+                'triggered_guardrails_count' => is_array($guardrailPolicy['triggered_guardrails'] ?? null) ? count($guardrailPolicy['triggered_guardrails']) : 0,
+                'winning_guardrail' => $guardrailPolicy['winning_guardrail'] ?? null,
+                'deterministic_business_verdict' => $guardrailPolicy['deterministic_decision']['business_verdict'] ?? null,
+                'blocked_decision' => $guardrailPolicy['deterministic_decision']['blocked_decision'] ?? null,
+                'allowed_decision' => $guardrailPolicy['deterministic_decision']['allowed_decision'] ?? null,
+            ],
+            'tomorrow_forecast_metrics' => [
+                'has_forecast' => !empty($tomorrowForecastMetrics),
+                'forecast_for_date' => $tomorrowForecastMetrics['forecast_for_date'] ?? null,
+                'data_as_of_date' => $tomorrowForecastMetrics['data_as_of_date'] ?? null,
+                'risk_flags' => $tomorrowForecastMetrics['risk_flags'] ?? ($tomorrowForecastMetrics['guardrails'] ?? []),
+                'completeness_guard_status' => $tomorrowForecastMetrics['data_windows']['completeness_guard']['status'] ?? null,
+            ],
+            'specialist_agents' => [
+                'keys' => array_keys($specialistAgents),
+                'count' => count($specialistAgents),
+                'statuses' => $this->agentStatusMap($specialistAgents),
+                'execution_modes' => $this->agentExecutionModeMap($specialistAgents),
+            ],
+            'evaluations' => [
+                'has_forecast_evaluations' => !empty($evaluations['forecast_evaluations'] ?? []),
+                'forecast_evaluated_count' => $evaluations['forecast_evaluations']['evaluated_count'] ?? null,
+                'forecast_pending_count' => $evaluations['forecast_evaluations']['pending_count'] ?? null,
+                'forecast_latest_quality' => $this->extractLatestForecastEvaluationQuality($evaluations['forecast_evaluations'] ?? []),
+                'has_forecast_model_calibration' => !empty($evaluations['forecast_model_calibration'] ?? []),
+                'forecast_trust_score' => $evaluations['forecast_model_calibration']['trust_score']['updated_score'] ?? null,
+                'forecast_role' => $evaluations['forecast_model_calibration']['decision_instruction']['forecast_role'] ?? null,
+            ],
+        ];
+    }
+
+    private function buildScenarioSimulationContextTrace(array $context): array
+    {
+        $metricsContext = $context['metrics_context'] ?? [];
+        $finalDecisionEnvelope = $context['final_decision'] ?? ($context['ai_final_decision_agent'] ?? []);
+        $finalDecision = $finalDecisionEnvelope['result'] ?? $finalDecisionEnvelope;
+        $tomorrowForecastMetrics = $context['tomorrow_forecast_metrics'] ?? ($metricsContext['tomorrow_forecast_metrics'] ?? []);
+        $specialistAgents = $context['specialist_agents'] ?? [];
+
+        return [
+            'has_final_decision_envelope' => !empty($finalDecisionEnvelope),
+            'has_final_decision_result' => !empty($finalDecision),
+            'final_decision_fields' => is_array($finalDecision) ? array_keys($finalDecision) : [],
+            'business_verdict' => $finalDecision['business_verdict'] ?? null,
+            'today_operator_summary' => $finalDecision['today_operator_summary'] ?? null,
+            'has_operating_decision' => !empty($finalDecision['operating_decision'] ?? []),
+            'has_prioritized_actions' => !empty($finalDecision['prioritized_actions'] ?? []),
+            'has_action_plan' => !empty($finalDecision['action_plan'] ?? []),
+            'has_tomorrow_forecast_metrics' => !empty($tomorrowForecastMetrics),
+            'forecast_for_date' => $tomorrowForecastMetrics['forecast_for_date'] ?? null,
+            'forecast_risk_flags' => $tomorrowForecastMetrics['risk_flags'] ?? ($tomorrowForecastMetrics['guardrails'] ?? []),
+            'has_ai_tomorrow_forecast_agent' => !empty($context['ai_tomorrow_forecast_agent'] ?? []),
+            'has_ai_ads_agent' => !empty($context['ai_ads_agent'] ?? []),
+            'specialist_agent_keys' => array_keys($specialistAgents),
+        ];
+    }
+
+    private function agentStatusMap(array $agents): array
+    {
+        $statuses = [];
+
+        foreach ($agents as $key => $agent) {
+            $statuses[$key] = $agent['status'] ?? null;
+        }
+
+        return $statuses;
+    }
+
+    private function agentExecutionModeMap(array $agents): array
+    {
+        $modes = [];
+
+        foreach ($agents as $key => $agent) {
+            $modes[$key] = $agent['execution']['mode'] ?? null;
+        }
+
+        return $modes;
+    }
+
+    private function extractLatestForecastEvaluationQuality(array $forecastEvaluations): ?string
+    {
+        $evaluated = $forecastEvaluations['evaluated'] ?? [];
+
+        if (empty($evaluated) || !is_array($evaluated)) {
+            return null;
+        }
+
+        $latest = end($evaluated);
+
+        if (!is_array($latest)) {
+            return null;
+        }
+
+        return $latest['summary']['forecast_quality'] ?? null;
+    }
+}

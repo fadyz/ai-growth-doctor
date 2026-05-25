@@ -1,0 +1,435 @@
+<?php
+
+namespace App\Services\GrowthDoctor\Agents;
+
+use App\Services\GrowthDoctor\Agents\AiAgentClient;
+
+class FinalDecisionAgent
+{
+    private $client;
+
+    public function __construct(AiAgentClient $client)
+    {
+        $this->client = $client;
+    }
+
+    public function run(array $context): array
+    {
+        $context = $this->compactContextForFinalDecision($context);
+
+        return $this->client->call(
+            'AI Final Decision Agent',
+            'You are the final coordinator in an AI multi-agent business doctor system for a mobile calorie tracking app. Act like an executive Growth War Room lead. Read the metric context, deterministic guardrail policy, forecast evaluation results, forecast calibration memory, AI Ads Agent output, and all specialist AI agents. Resolve conflicts, identify consensus, challenge weak evidence, estimate business impact, create measurable scores, prioritize business impact, and produce one final practical operating decision. Do not blindly average the agents. If metrics_context.guardrail_policy is available, first read guardrail_policy.triggered_guardrails and guardrail_policy.winning_guardrail as the source of truth for deterministic guardrail status. If triggered_guardrails is empty and winning_guardrail is null, the guardrail policy is clear: do not say that guardrail wins, blocks, overrides, dominates, or vetoes the final decision. In that clear-guardrail case, use guardrail_policy.deterministic_decision only as compatible operating guidance, not as a violation or override. If winning_guardrail is non-null, treat guardrail_policy.deterministic_decision as the primary deterministic operating decision basis. Use the specialist agents to explain, challenge, and contextualize the policy result, but do not override guardrail_policy.deterministic_decision.blocked_actions or blocked_decision unless the data_quality_guardrail is triggered or the policy is clearly missing required inputs. If samples are weak, say so clearly. If forecast_evaluations are available, use them to judge whether the previous forecast/decision was accurate. If forecast_model_calibration is available, use it only to weight forecast evidence, not to replace the business decision. The final output must remain a business operating decision such as hold budget, scale carefully, prioritize activation, segment monetization, shift attention to reset campaign, or continue rollout. However, if metrics_pending_maturity is greater than 0 or metric quality is pending_maturity, do not treat those cohort-lagged metrics as forecast misses. D1 requires forecast_for_date + 1 day actual data, while habit_7d_rate and avg_log_days_7d require forecast_for_date + 6 days actual data. Separate mature forecast accuracy from pending cohort-lagged metrics. For version evidence, prefer compact_version_context.relevant_versions, release_candidate_versions, and legacy_context_summary; do not overinterpret legacy or instrumentation-incompatible versions as current rollout veto evidence. Separate facts, hypotheses, uncertainty, and final decision. The most important output is an operating_decision panel that tells the business what to do today across ads, release, product, monetization, and campaigns. Also expose the collaboration process: create an agent_debate_trace with at least 6 debate steps when ai_tomorrow_forecast_agent is present in specialist_agents, showing a realistic multi-agent disagreement and resolution: Activation Agent argues from activation evidence, Retention Agent may caution against aggressive scale if D1/habit is weak, and may only veto scale when a deterministic guardrail is actually triggered, Monetization Agent argues revenue upside or paywall risk, Version Agent argues rollout/release safety using compact_version_context, not raw long legacy version lists, Ads Agent argues from acquisition cost/campaign lifecycle evidence, Guardrail Policy Engine provides deterministic blocked/allowed actions and winning guardrail, Tomorrow Forecast Agent argues from quantitative next-day forecast evidence and may raise or relax forecast-based risk cautions, and Final Decision Agent resolves the conflict into one operating decision without violating deterministic blocked actions; when winning_guardrail is null, this must be presented as normal operating resolution, not a guardrail victory. The recommended evidence order is Activation Agent -> Retention Agent -> Monetization Agent -> Version Agent -> Ads Agent -> Guardrail Policy Engine -> Tomorrow Forecast Agent -> Final Decision Agent. If ai_tomorrow_forecast_agent exists, include Tomorrow Forecast Agent as its own evidence signal. If ai_ads_agent exists, include Ads Agent as its own evidence signal. Do not present the evidence as a strict chronological process. Tomorrow Forecast Agent evidence must reference forecast_for_date, predicted D1/habit/activation risk, and forecast risk flags from ai_tomorrow_forecast_agent.result. Do not call Tomorrow Forecast Agent risk flags Guardrail Policy Engine guardrails. Forecast fields such as risk_flags, deprecated guardrails, scaling_caution, or old scaling_guardrail are forecast caution signals only, not deterministic guardrail_policy triggers, not direct contact with Guardrail Policy Engine, and not vetoes unless metrics_context.guardrail_policy.winning_guardrail is non-null. Ads Agent evidence must reference ads_verdict, campaign_health, budget_decision, campaign_lifecycle_interpretation, guardrails, and impact_on_final_decision from ai_ads_agent.result. If Ads Agent says Volume Stabil is degraded_legacy and Volume Install Reset is reset_successor, do not interpret reducing or pausing Volume Stabil as shutting down acquisition; interpret it as a campaign recovery/reset strategy. Ads evidence may allow a small controlled test only when downstream activation/retention guardrails are safe; ads evidence must not override weak retention by itself. Guardrail Policy Engine evidence must reference policy_version, policy_type, winning_guardrail, triggered_guardrails, deterministic_decision.business_verdict, deterministic_decision.blocked_decision, deterministic_decision.allowed_decision, blocked_actions, allowed_actions, and reason_codes. If winning_guardrail is null and triggered_guardrails is empty, describe the Guardrail Policy Engine view as no deterministic guardrail violation / guardrail clear; blocked_actions are narrow forbidden actions only and must not be interpreted as the whole decision being blocked. If guardrail_policy exists, the conflict_resolution_rule must be consistent with guardrail_policy.winning_guardrail and guardrail_policy.deterministic_decision. If guardrail_policy.winning_guardrail is null, conflict_resolution_rule.winning_guardrail must be null or "none", conflict_resolution_rule.resolution_type must be "normal_operating_resolution", rule_triggered must say no deterministic guardrail triggered, why_veto_won must say no veto won, and final_resolution must not be framed as guardrail-led. In this case do not use the word veto for specialist cautions; say "retention caution", "ads caution", "forecast caution", or "business caution" instead of "retention veto", "ads veto", or "forecast veto". If evaluations.forecast_evaluations is available, include Forecast Evaluation as decision evidence: mention forecast_quality, hit_rate, metrics_pending_maturity, main_misses, actual_data_available_until, and whether the mature parts of the previous forecast support or weaken today\'s forecast-based risk caution. If many important retention metrics are pending_maturity, say evaluation is partial instead of calling the forecast wrong. If evaluations.forecast_model_calibration is available, include Forecast Calibration as weighting evidence: mention trust_score.updated_score, trust_score.interpretation, overall_mature_hit_rate, decision_instruction.forecast_role, confidence_adjustment.guardrail_adjustment, and bias_detection, but describe guardrail_adjustment as forecast confidence weighting, not as a deterministic guardrail trigger. Do not make the final decision about whether to trust the forecast; use calibration only to decide how much weight forecast evidence receives. Return valid JSON only in Indonesian. The response must be a JSON object and must not contain markdown, prose outside JSON, or code fences.',
+            [
+                'business_verdict' => 'CONTINUE_MONITORING | HOLD_AND_OPTIMIZE | SCALE_CAREFULLY | ROLLBACK_RISK',
+                'confidence_score' => '0-100 integer; confidence in final verdict',
+                'business_status' => 'short status',
+                'operating_decision' => [
+                    'ads_decision' => [
+                        'decision' => 'increase_budget | hold_budget | reduce_budget | pause | not_enough_data',
+                        'label' => 'short human label for dashboard, e.g. Hold Budget',
+                        'confidence_score' => '0-100 integer',
+                        'reason' => 'why this ads decision is recommended',
+                        'next_action' => 'specific next action for ads today',
+                        'guardrail_metric' => 'metric that must be monitored before changing ads budget'
+                    ],
+                    'release_decision' => [
+                        'decision' => 'continue_rollout | continue_with_monitoring | hold_rollout | rollback | not_enough_data',
+                        'label' => 'short human label for dashboard',
+                        'confidence_score' => '0-100 integer',
+                        'reason' => 'why this release decision is recommended',
+                        'next_action' => 'specific next action for release today',
+                        'guardrail_metric' => 'metric that must be monitored for release risk'
+                    ],
+                    'product_decision' => [
+                        'decision' => 'prioritize_activation | prioritize_retention | prioritize_monetization | prioritize_release_quality | not_enough_data',
+                        'label' => 'short human label for dashboard',
+                        'confidence_score' => '0-100 integer',
+                        'reason' => 'why this product priority is recommended',
+                        'next_action' => 'specific product action to do next',
+                        'success_metric' => 'metric to judge if product action worked'
+                    ],
+                    'monetization_decision' => [
+                        'decision' => 'increase_paywall_pressure | keep_current | reduce_pressure | segment_only | not_enough_data',
+                        'label' => 'short human label for dashboard',
+                        'confidence_score' => '0-100 integer',
+                        'reason' => 'why this monetization decision is recommended',
+                        'next_action' => 'specific monetization action to do next',
+                        'guardrail_metric' => 'metric to ensure monetization does not hurt activation/retention'
+                    ],
+                    'campaign_decision' => [
+                        'decision' => 'scale_validated_campaigns | continue_holdout | pause_weak_campaigns | launch_small_test | not_enough_data',
+                        'label' => 'short human label for dashboard',
+                        'confidence_score' => '0-100 integer',
+                        'reason' => 'why this campaign decision is recommended',
+                        'next_action' => 'specific push/CRM/campaign action to do next',
+                        'guardrail_metric' => 'metric that must be monitored for campaign quality'
+                    ],
+                ],
+                'today_operator_summary' => 'one sentence: what the operator should do today and what should not be scaled yet',
+                'growth_health_score' => [
+                    'overall_score' => '0-100 integer; overall growth health score',
+                    'activation_score' => '0-100 integer',
+                    'retention_score' => '0-100 integer',
+                    'monetization_score' => '0-100 integer',
+                    'release_score' => '0-100 integer',
+                    'main_constraint' => 'activation | retention | monetization | release | ads_acquisition | data_quality',
+                    'score_explanation' => 'brief explanation of how the score should be interpreted'
+                ],
+                'business_impact_estimate' => [
+                    'main_metric_at_risk' => 'metric name',
+                    'growth_blocker' => 'main growth blocker',
+                    'revenue_risk' => 'low | medium | high',
+                    'efficiency_impact' => 'how this affects team/marketing/product efficiency',
+                    'estimated_uplift_if_fixed' => [
+                        'assumption' => 'clear assumption used for estimate',
+                        'extra_workspace_users_7d' => 'integer or null',
+                        'extra_food_add_success_users_7d' => 'integer or null',
+                        'extra_paywall_eligible_users_7d' => 'integer or null',
+                        'revenue_direction' => 'positive | neutral | negative | unknown'
+                    ]
+                ],
+                'deterministic_guardrail_decision_basis' => [
+                    'policy_available' => 'true | false',
+                    'policy_version' => 'guardrail_policy.policy_version if available',
+                    'policy_type' => 'guardrail_policy.policy_type if available',
+                    'winning_guardrail' => 'guardrail_policy.winning_guardrail if available',
+                    'business_verdict' => 'guardrail_policy.deterministic_decision.business_verdict if available',
+                    'blocked_decision' => 'guardrail_policy.deterministic_decision.blocked_decision if available',
+                    'allowed_decision' => 'guardrail_policy.deterministic_decision.allowed_decision if available',
+                    'confidence_score' => 'guardrail_policy.deterministic_decision.confidence_score if available',
+                    'blocked_actions' => ['blocked action from deterministic policy'],
+                    'allowed_actions' => ['allowed action from deterministic policy'],
+                    'reason_codes' => ['reason codes from deterministic policy'],
+                    'impact_on_final_decision' => 'if winning_guardrail is null, say no deterministic guardrail violation and explain only narrow allowed/blocked operating constraints; if winning_guardrail is non-null, explain how this deterministic policy constrained or shaped the final decision',
+                    'override_status' => 'not_overridden | overridden_due_to_data_quality | not_available',
+                    'override_reason' => 'if winning_guardrail is null, say no deterministic guardrail needed overriding because none was triggered; if overridden, explain objective reason; otherwise say deterministic blocked actions were respected'
+                ],
+                'agent_debate_summary' => [
+                    'activation_agent_view' => 'short view from activation agent',
+                    'retention_agent_view' => 'short view from retention agent',
+                    'monetization_agent_view' => 'short view from monetization agent',
+                    'version_agent_view' => 'short view from version agent',
+                    'ads_agent_view' => 'short view from Ads Agent about acquisition cost, campaign lifecycle, reset campaign, and budget guardrails',
+                    'guardrail_policy_view' => 'short view from deterministic Guardrail Policy Engine: if winning_guardrail is null and triggered_guardrails is empty, say guardrail clear/no deterministic violation; otherwise state winning guardrail, blocked decision, allowed decision, and reason codes',
+                    'tomorrow_forecast_agent_view' => 'Forecast-based next-day risk view using forecast risk flags/cautions, not deterministic Guardrail Policy Engine triggers, and how it affects today decision',
+                    'forecast_calibration_view' => 'How forecast calibration memory changes the weight of forecast evidence without replacing the business decision',
+                    'final_resolution' => 'how final agent resolves agent agreement/conflict; if winning_guardrail is null, frame this as normal operating decision, not guardrail victory or guardrail veto'
+                ],
+                'agent_debate_trace' => [
+                    [
+                        'step' => 1,
+                        'agent' => 'Activation Agent | Retention Agent | Monetization Agent | Version Agent | Ads Agent | Guardrail Policy Engine | Tomorrow Forecast Agent | Forecast Calibration Memory | Final Decision Agent',
+                        'dialogue_turn' => 'short dialogue-like sentence. If winning_guardrail is null, do not use veto language; e.g. Retention Agent: I caution against aggressive scaling because D1/habit is still weak. Use veto language only when a deterministic guardrail is triggered.',
+                        'position' => 'what this agent argues based on its metrics',
+                        'evidence' => 'specific metric or signal used by this agent; for Version Agent use compact_version_context.relevant_versions, release_candidate_versions, legacy_context_summary, and release_guardrail_relevance_rule instead of raw long version lists; for Ads Agent include ads_verdict, campaign_health, budget_decision, campaign_lifecycle_interpretation, guardrails, and reset campaign context; for Guardrail Policy Engine include policy_version, winning_guardrail, triggered_guardrails, blocked_actions, allowed_actions, and reason_codes; for Tomorrow Forecast Agent include forecast_for_date, predicted D1/habit/activation risk, risk_flags, and scaling_caution; for forecast evaluation evidence include forecast_quality, hit_rate, metrics_pending_maturity, maturity_interpretation, and main_misses; for Forecast Calibration Memory include trust_score, overall_mature_hit_rate, forecast_role, guardrail_adjustment as forecast confidence weighting, and bias_detection',
+                        'objection_or_veto' => 'whether this agent challenges another agent; if winning_guardrail is null, call it caution/objection not veto; null if none',
+                        'vote' => 'scale | hold | reduce | continue | rollback | investigate | caution_against_scale | veto_scale | deterministic_policy_blocks_action | deterministic_policy_allows_action | shift_to_reset_campaign | ads_allows_cautious_test | ads_blocks_scaling | forecast_cautions_against_scaling | forecast_supports_cautious_test; use veto_scale only when deterministic guardrail is triggered',
+                        'impact_on_final_decision' => 'how this changed or influenced the final decision'
+                    ],
+                    [
+                        'step' => 2,
+                        'agent' => 'another agent',
+                        'dialogue_turn' => 'another short dialogue-like sentence',
+                        'position' => 'another agent position',
+                        'evidence' => 'specific metric or signal',
+                        'objection_or_veto' => 'objection/veto if any',
+                        'vote' => 'scale | hold | reduce | continue | rollback | investigate | caution_against_scale | veto_scale; use veto_scale only when deterministic guardrail is triggered',
+                        'impact_on_final_decision' => 'how this changed or influenced the final decision'
+                    ]
+                ],
+                'tomorrow_forecast_decision_impact' => [
+                    'forecast_agent_present' => 'true | false',
+                    'forecast_for_date' => 'date from ai_tomorrow_forecast_agent.result.forecast_for_date if present',
+                    'scaling_caution' => 'scaling_caution from ai_tomorrow_forecast_agent.result.risk_flags or guardrail_assessment if present; this is a forecast caution, not deterministic guardrail_policy',
+                    'main_forecast_risk' => 'main predicted risk from Tomorrow Forecast Agent',
+                    'impact_on_today_decision' => 'how the forecast risk flags changed, strengthened, or softened today operating decision without being treated as deterministic guardrail triggers'
+                ],
+                'ads_decision_impact' => [
+                    'ads_agent_present' => 'true | false',
+                    'ads_verdict' => 'ads_verdict from ai_ads_agent.result if present',
+                    'campaign_health' => 'campaign_health from ai_ads_agent.result if present',
+                    'budget_decision' => 'budget_decision.decision from ai_ads_agent.result if present',
+                    'legacy_campaign_interpretation' => 'how Final Decision interprets Volume Stabil if degraded_legacy is present',
+                    'reset_campaign_interpretation' => 'how Final Decision interprets Volume Install Reset if reset_successor is present',
+                    'ads_supply_vs_product_quality' => 'how ads supply evidence is combined with activation/retention quality',
+                    'impact_on_today_decision' => 'how Ads Agent changed, strengthened, or softened the ads/budget operating decision today'
+                ],
+                'forecast_evaluation_decision_impact' => [
+                    'evaluation_available' => 'true | false',
+                    'actual_data_available_until' => 'date from evaluations.forecast_evaluations.actual_data_available_until if present',
+                    'latest_forecast_for_date' => 'latest evaluated forecast_for_date if present',
+                    'latest_forecast_quality' => 'good | partially_correct | poor | no_comparable_metrics | not_available',
+                    'latest_hit_rate' => 'numeric hit rate or null',
+                    'metrics_pending_maturity' => 'integer count of metrics not yet fair to evaluate because cohort data has not matured',
+                    'maturity_interpretation' => 'explain whether evaluation is complete or partial due to D1/7D maturity lag',
+                    'main_misses' => ['short summary of main forecast misses if any'],
+                    'impact_on_today_decision' => 'how mature evaluation result changes trust in forecast risk cautions and operating decision today; do not punish forecast for pending_maturity metrics'
+                ],
+                'forecast_calibration_decision_impact' => [
+                    'calibration_available' => 'true | false',
+                    'evaluations_used' => 'integer count from evaluations.forecast_model_calibration.evaluations_used if present',
+                    'trust_score' => 'numeric updated trust score or null',
+                    'trust_interpretation' => 'high_trust | medium_high_trust | medium_trust | low_trust | not_available',
+                    'overall_mature_hit_rate' => 'numeric mature hit rate or null',
+                    'forecast_role' => 'can_strengthen_forecast_caution | supporting_forecast_caution | directional_signal_only | not_available',
+                    'guardrail_adjustment' => 'forecast_can_strengthen_caution | supporting_caution_only | do_not_use_as_primary_veto | use_directionally_only | not_available; field name kept for compatibility but meaning is forecast confidence weighting, not deterministic guardrail trigger',
+                    'bias_summary' => 'short summary of systematic bias detection and weak metrics',
+                    'impact_on_today_decision' => 'how calibration changes the weight of forecast evidence in today business decision; must not replace actual mature metrics or specialist evidence'
+                ],
+                'conflict_resolution_rule' => [
+                    'winning_guardrail' => 'must match guardrail_policy.winning_guardrail when available; use null or none when guardrail_policy.winning_guardrail is null; otherwise activation_guardrail | retention_guardrail | monetization_guardrail | release_guardrail | ads_acquisition_guardrail | data_quality_guardrail. Do not invent forecast_guardrail, forecast_evaluation_guardrail, or forecast_calibration_guardrail unless GuardrailPolicyEngine actually outputs that exact winning_guardrail.',
+                    'resolution_type' => 'normal_operating_resolution when winning_guardrail is null; deterministic_guardrail_resolution only when winning_guardrail is non-null',
+                    'rule_triggered' => 'deterministic policy reason code or threshold that was triggered; if winning_guardrail is null, say no deterministic guardrail triggered and do not mention specialist cautions as triggered guardrail rules',
+                    'blocked_decision' => 'must match or be consistent with guardrail_policy.deterministic_decision.blocked_decision when available; if winning_guardrail is null and blocked_decision is none, do not imply the final decision is blocked',
+                    'allowed_decision' => 'must match or be consistent with guardrail_policy.deterministic_decision.allowed_decision when available; if winning_guardrail is null, interpret allowed_decision as operating guidance, not guardrail victory',
+                    'why_veto_won' => 'if winning_guardrail is null, say no veto won because no deterministic guardrail was triggered; do not say retention veto, ads veto, or forecast veto in this case. Otherwise explain why this deterministic guardrail priority wins over competing agent recommendations',
+                    'objective_thresholds_used' => [
+                        'threshold or reason_code 1 from guardrail_policy',
+                        'threshold or reason_code 2 from guardrail_policy'
+                    ],
+                    'policy_consistency_check' => 'guardrail_clear_consistent_with_policy | consistent_with_guardrail_policy | no_guardrail_policy_available | overridden_due_to_data_quality'
+                ],
+                'operational_action_plan' => [
+                    [
+                        'action' => 'specific experiment/action name',
+                        'target_user_segment' => 'who exactly receives this action',
+                        'trigger_condition' => 'when this action should trigger',
+                        'success_metric' => 'primary success metric',
+                        'stop_loss_metric' => 'metric that stops the action if it worsens',
+                        'expected_lift' => 'numeric or directional expected lift',
+                        'experiment_duration' => 'duration such as 7 days',
+                        'minimum_sample_size' => 'minimum sample before judging',
+                        'rollback_condition' => 'when to stop/rollback this action',
+                        'owner_area' => 'product | marketing | ads | release | monetization | data'
+                    ]
+                ],
+                'action_plan' => [
+                    'mode' => 'dry_run_only',
+                    'requires_human_approval' => true,
+                    'tool_call_ready' => true,
+                    'proposed_tools' => [
+                        [
+                            'tool' => 'schedule_push_campaign | update_ads_budget | hold_release_rollout | create_product_experiment | update_paywall_rule',
+                            'action' => 'short action name',
+                            'target_segment' => 'target users or scope',
+                            'payload_summary' => 'brief payload that would be sent to the tool/API',
+                            'expected_business_impact' => 'high | medium | low',
+                            'safety_guardrail' => 'metric or rule that prevents unsafe execution',
+                            'approval_question' => 'human approval question before executing this action',
+                            'execution_status' => 'not_executed_dry_run_only'
+                        ]
+                    ]
+                ],
+                'main_diagnosis' => 'main diagnosis in Indonesian',
+                'executive_summary' => 'one short executive summary suitable for dashboard headline',
+                'agent_consensus' => 'what the specialist agents agree on',
+                'agent_conflicts' => ['conflict 1 if any', 'conflict 2 if any'],
+                'weak_evidence_or_uncertainty' => ['uncertainty 1', 'uncertainty 2'],
+                'root_cause_hypothesis' => ['hypothesis 1', 'hypothesis 2'],
+                'prioritized_actions' => [
+                    [
+                        'priority' => 1,
+                        'action' => 'action text',
+                        'owner_area' => 'product | marketing | ads | release | monetization | data',
+                        'expected_impact' => 'high | medium | low',
+                        'why' => 'short reason this action is prioritized',
+                        'success_metric' => 'objective metric to evaluate this action',
+                        'success_target' => 'numeric or directional target'
+                    ],
+                    [
+                        'priority' => 2,
+                        'action' => 'action text',
+                        'owner_area' => 'product | marketing | ads | release | monetization | data',
+                        'expected_impact' => 'high | medium | low',
+                        'why' => 'short reason this action is prioritized',
+                        'success_metric' => 'objective metric to evaluate this action',
+                        'success_target' => 'numeric or directional target'
+                    ]
+                ],
+                'recommended_actions' => ['action 1', 'action 2', 'action 3'],
+                'risk_notes' => ['risk 1', 'risk 2'],
+                'next_24h_monitoring_plan' => ['metric to check 1', 'metric to check 2'],
+                'next_7d_learning_plan' => ['learning item 1', 'learning item 2'],
+                'objective_evaluation_plan' => [
+                    'primary_metric' => 'main metric to evaluate after actions',
+                    'secondary_metrics' => ['metric 1', 'metric 2'],
+                    'decision_rule' => 'objective rule for continue/hold/rollback after next checkpoint',
+                    'next_checkpoint_window' => '24h | 3d | 7d',
+                    'minimum_sample_needed' => 'sample size or condition needed before changing the decision'
+                ],
+                'previous_decision_evaluation' => [
+                    'available' => 'true | false',
+                    'previous_decision' => 'summary of previous decision if available',
+                    'expected_outcome' => 'what yesterday decision expected to improve',
+                    'actual_outcome' => 'what actually happened in the current checkpoint',
+                    'decision_quality' => 'correct | partially_correct | wrong | not_enough_data; use forecast_evaluations when available, but treat pending_maturity as not_enough_data for that metric',
+                    'lesson' => 'what the system learned from previous decision outcome and forecast calibration memory; keep the lesson business-action oriented, not just trust/distrust forecast'
+                ],
+                'decision_risk_assessment' => [
+                    'decision' => 'main operating decision such as hold_budget | scale_carefully | prioritize_activation | segment_only | continue_monitoring',
+                    'primary_reason' => 'plain-language reason why the decision was taken',
+                    'evidence_summary' => [
+                        'signals_supporting_decision' => 'integer',
+                        'signals_against_decision' => 'integer',
+                        'signals_inconclusive' => 'integer',
+                        'short_explanation' => 'summary of the evidence balance',
+                        'deterministic_policy_used' => 'true | false',
+                        'deterministic_policy_summary' => 'if winning_guardrail is null, summarize as guardrail clear/no deterministic violation plus narrow blocked/allowed actions; otherwise summarize winning guardrail and blocked/allowed action if guardrail_policy is available'
+                    ],
+                    'confidence_score' => '0-100 integer',
+                    'if_wrong' => [
+                        'risk_type' => 'missed_upside | wasted_spend | activation_damage | release_regression | not_enough_data',
+                        'estimated_7d_impact' => 'currency range if enough data exists, otherwise not_enough_data',
+                        'impact_explanation' => 'what business downside happens if this decision is wrong',
+                        'missing_inputs' => ['missing input such as CPI, budget_delta, ARPPU, purchase_rate if currency estimate is not enough data']
+                    ],
+                    'reverse_condition' => [
+                        'condition' => 'objective condition that would reverse or soften this decision',
+                        'next_decision' => 'what decision should be considered when condition is met'
+                    ],
+                    'forecast_role' => [
+                        'role' => 'primary_forecast_caution | supporting_forecast_caution | directional_signal_only | ignored_due_to_low_trust',
+                        'why' => 'how forecast evaluation/calibration and Ads Agent evidence influenced but did not replace the final business decision; forecast cautions are not deterministic Guardrail Policy Engine triggers'
+                    ]
+                ],
+                'competition_pitch' => '1-2 sentence explanation of why this multi-agent system is useful for business decision making',
+            ],
+            $context
+        );
+    }
+    private function compactContextForFinalDecision(array $context): array
+    {
+        if (isset($context['metrics_context']['version_metrics']) && is_array($context['metrics_context']['version_metrics'])) {
+            $context['metrics_context']['version_metrics'] = $this->compactVersionMetrics($context['metrics_context']['version_metrics']);
+        }
+
+        if (isset($context['metrics']['version_metrics']) && is_array($context['metrics']['version_metrics'])) {
+            $context['metrics']['version_metrics'] = $this->compactVersionMetrics($context['metrics']['version_metrics']);
+        }
+
+        return $context;
+    }
+
+    private function compactVersionMetrics(array $versionMetrics): array
+    {
+        $versions = $versionMetrics['versions'] ?? [];
+        $topVersions = $versionMetrics['top_versions'] ?? [];
+        $sourceVersions = !empty($topVersions) ? $topVersions : $versions;
+
+        if (empty($sourceVersions) || !is_array($sourceVersions)) {
+            return $versionMetrics;
+        }
+
+        $totalSessionUsers = $this->totalSessionUsersFromVersions($sourceVersions);
+        $relevantVersions = [];
+        $releaseCandidateVersions = [];
+        $legacyContext = [];
+
+        foreach ($sourceVersions as $row) {
+            if (!is_array($row)) {
+                continue;
+            }
+
+            $appVersion = (string)($row['app_version'] ?? 'unknown');
+            $sessionUsers = $this->numberOrNull($row['session_users'] ?? null);
+            $sessionShare = $this->sessionShare($sessionUsers, $totalSessionUsers);
+            $majorMinor = $this->majorMinorVersion($appVersion);
+            $isCompatible = $majorMinor !== null && $majorMinor >= 3.5;
+            $isCurrentLine = $majorMinor !== null && in_array(number_format($majorMinor, 1, '.', ''), ['3.5', '3.6'], true);
+            $hasMeaningfulBase = $sessionUsers !== null && $sessionUsers >= 100 && $sessionShare !== null && $sessionShare >= 3.0;
+
+            $compactRow = [
+                'app_version' => $appVersion,
+                'session_users' => $sessionUsers,
+                'session_share_pct' => $sessionShare,
+                'workspace_users' => $row['workspace_users'] ?? null,
+                'food_add_success_users' => $row['food_add_success_users'] ?? null,
+                'paywall_view_users' => $row['paywall_view_users'] ?? null,
+                'purchase_success_users' => $row['purchase_success_users'] ?? null,
+                'food_add_success_rate_from_session' => $row['food_add_success_rate_from_session'] ?? null,
+                'food_add_success_rate_from_workspace' => $row['food_add_success_rate_from_workspace'] ?? null,
+                'purchase_success_rate_from_paywall' => $row['purchase_success_rate_from_paywall'] ?? null,
+            ];
+
+            if ($isCompatible && ($isCurrentLine || $hasMeaningfulBase)) {
+                $compactRow['release_relevance'] = $isCurrentLine ? 'current_release_line' : 'meaningful_active_base';
+                $relevantVersions[] = $compactRow;
+            } else {
+                $legacyContext[] = [
+                    'app_version' => $appVersion,
+                    'session_users' => $sessionUsers,
+                    'session_share_pct' => $sessionShare,
+                    'reason' => $isCompatible ? 'small_or_low_share_version_context_only' : 'legacy_or_instrumentation_incompatible_context_only',
+                ];
+            }
+
+            if ($majorMinor !== null && $majorMinor >= 3.6) {
+                $releaseCandidateVersions[] = $compactRow;
+            }
+        }
+
+        $versionMetrics['compact_version_context'] = [
+            'relevance_rule' => 'Use relevant_versions and release_candidate_versions for rollout/release decisions. Legacy/instrumentation-incompatible versions are context only and must not veto current rollout decisions.',
+            'total_session_users_in_version_window' => $totalSessionUsers,
+            'relevant_versions' => array_slice($relevantVersions, 0, 8),
+            'release_candidate_versions' => array_slice($releaseCandidateVersions, 0, 5),
+            'legacy_context_summary' => [
+                'legacy_or_context_versions_count' => count($legacyContext),
+                'top_legacy_context_versions' => array_slice($legacyContext, 0, 8),
+            ],
+        ];
+
+        unset($versionMetrics['versions']);
+        $versionMetrics['top_versions'] = array_slice($versionMetrics['top_versions'] ?? $sourceVersions, 0, 8);
+
+        return $versionMetrics;
+    }
+
+    private function totalSessionUsersFromVersions(array $versions): float
+    {
+        $total = 0.0;
+
+        foreach ($versions as $row) {
+            if (!is_array($row)) {
+                continue;
+            }
+
+            $sessionUsers = $this->numberOrNull($row['session_users'] ?? null);
+            if ($sessionUsers !== null && $sessionUsers > 0) {
+                $total += $sessionUsers;
+            }
+        }
+
+        return $total;
+    }
+
+    private function sessionShare(?float $sessionUsers, float $totalSessionUsers): ?float
+    {
+        if ($sessionUsers === null || $totalSessionUsers <= 0) {
+            return null;
+        }
+
+        return round(($sessionUsers / $totalSessionUsers) * 100, 2);
+    }
+
+    private function majorMinorVersion(string $appVersion): ?float
+    {
+        $normalized = strtolower(trim($appVersion));
+
+        if (!preg_match('/^(\d+)\.(\d+)/', $normalized, $matches)) {
+            return null;
+        }
+
+        return (float)($matches[1] . '.' . $matches[2]);
+    }
+
+    private function numberOrNull($value): ?float
+    {
+        if ($value === null || $value === '') {
+            return null;
+        }
+
+        return is_numeric($value) ? (float)$value : null;
+    }
+}
