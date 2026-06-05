@@ -39,9 +39,18 @@ class ForecastCalibrationService
             return $calibration;
         }
 
-        $evaluations = array_map(function ($file) {
+        $evaluations = array_values(array_filter(array_map(function ($file) {
             return $this->readJsonFile($file);
-        }, $evaluationFiles);
+        }, $evaluationFiles), function ($evaluation) {
+            return is_array($evaluation) && !empty($evaluation);
+        }));
+
+        usort($evaluations, function ($a, $b) {
+            return strcmp(
+                (string) ($a['forecast_for_date'] ?? ''),
+                (string) ($b['forecast_for_date'] ?? '')
+            );
+        });
 
         $matureRows = $this->collectMatureRows($evaluations);
         $overall = $this->summarizeRows($matureRows);
@@ -57,7 +66,7 @@ class ForecastCalibrationService
             'learning_window' => 'last_' . $limit . '_evaluated_forecasts',
             'mature_metrics_only' => true,
             'evaluations_used' => count($evaluations),
-            'evaluation_files_used' => array_map('basename', $evaluationFiles),
+            'evaluation_files_used' => $this->evaluationFilesUsedSummary($evaluationFiles, $evaluations),
             'overall_mature_hit_rate' => $overall['hit_rate'],
             'mature_metrics_total' => $overall['total'],
             'mature_metrics_hit' => $overall['hit'],
@@ -99,11 +108,49 @@ class ForecastCalibrationService
 
         $files = glob($dir . '/evaluation_for_*_created_*.json') ?: [];
 
+        $files = array_values(array_filter($files, function ($file) {
+            $date = $this->forecastDateFromEvaluationFilename($file);
+
+            return $date !== null;
+        }));
+
         usort($files, function ($a, $b) {
+            $dateCompare = strcmp(
+                (string) $this->forecastDateFromEvaluationFilename($b),
+                (string) $this->forecastDateFromEvaluationFilename($a)
+            );
+
+            if ($dateCompare !== 0) {
+                return $dateCompare;
+            }
+
             return filemtime($b) <=> filemtime($a);
         });
 
-        return array_reverse(array_slice($files, 0, $limit));
+        $latestByForecastDate = [];
+
+        foreach ($files as $file) {
+            $forecastDate = $this->forecastDateFromEvaluationFilename($file);
+
+            if ($forecastDate === null) {
+                continue;
+            }
+
+            if (!isset($latestByForecastDate[$forecastDate])) {
+                $latestByForecastDate[$forecastDate] = $file;
+            }
+        }
+
+        $selected = array_slice(array_values($latestByForecastDate), 0, $limit);
+
+        usort($selected, function ($a, $b) {
+            return strcmp(
+                (string) $this->forecastDateFromEvaluationFilename($a),
+                (string) $this->forecastDateFromEvaluationFilename($b)
+            );
+        });
+
+        return $selected;
     }
 
     private function collectMatureRows(array $evaluations): array
@@ -378,9 +425,66 @@ class ForecastCalibrationService
             return [];
         }
 
-        $latest = end($evaluations);
+        $valid = array_values(array_filter($evaluations, function ($evaluation) {
+            return is_array($evaluation) && !empty($evaluation['forecast_for_date']);
+        }));
 
-        return is_array($latest) ? $latest : [];
+        if (empty($valid)) {
+            return [];
+        }
+
+        usort($valid, function ($a, $b) {
+            return strcmp(
+                (string) ($b['forecast_for_date'] ?? ''),
+                (string) ($a['forecast_for_date'] ?? '')
+            );
+        });
+
+        return $valid[0];
+    }
+
+    private function forecastDateFromEvaluationFilename(string $path): ?string
+    {
+        $basename = basename($path);
+
+        if (preg_match('/evaluation_for_(\d{4}-\d{2}-\d{2})_created_/', $basename, $matches) !== 1) {
+            return null;
+        }
+
+        return $matches[1];
+    }
+
+    private function evaluationFilesUsedSummary(array $evaluationFiles, array $evaluations): array
+    {
+        $byForecastDate = [];
+
+        foreach ($evaluationFiles as $file) {
+            $forecastDate = $this->forecastDateFromEvaluationFilename($file);
+
+            if ($forecastDate === null) {
+                continue;
+            }
+
+            $byForecastDate[$forecastDate] = basename($file);
+        }
+
+        $result = [];
+
+        foreach ($evaluations as $evaluation) {
+            $forecastDate = $evaluation['forecast_for_date'] ?? null;
+
+            if (!$forecastDate) {
+                continue;
+            }
+
+            $result[] = [
+                'forecast_for_date' => $forecastDate,
+                'data_as_of_date' => $evaluation['data_as_of_date'] ?? null,
+                'file' => $byForecastDate[$forecastDate] ?? null,
+            ];
+        }
+
+        return $result;
     }
 
     private function previousTrustScore(): float

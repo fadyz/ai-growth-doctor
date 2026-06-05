@@ -136,7 +136,7 @@ class GuardrailPolicyEngine
             }
         }
 
-        if ($habit !== null && $habit < 16) {
+        if ($habit !== null && $habit < 11) {
             if ($habitMature) {
                 $reasonCodes[] = 'habit_7d_rate_below_scale_guardrail';
             } else {

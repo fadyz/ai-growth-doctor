@@ -300,6 +300,22 @@ class FinalDecisionAgent
     }
     private function compactContextForFinalDecision(array $context): array
     {
+        if (isset($context['metrics_context']) && is_array($context['metrics_context'])) {
+            $context['metrics_context'] = $this->compactMetricsContext($context['metrics_context']);
+        }
+
+        if (isset($context['specialist_agents']) && is_array($context['specialist_agents'])) {
+            $context['specialist_agents'] = $this->compactSpecialistAgents($context['specialist_agents']);
+        }
+
+        if (isset($context['evaluations']) && is_array($context['evaluations'])) {
+            $context['evaluations'] = $this->compactEvaluations($context['evaluations']);
+        }
+
+        if (isset($context['forecast_model_calibration']) && is_array($context['forecast_model_calibration'])) {
+            $context['forecast_model_calibration'] = $this->compactForecastCalibration($context['forecast_model_calibration']);
+        }
+
         if (isset($context['metrics_context']['version_metrics']) && is_array($context['metrics_context']['version_metrics'])) {
             $context['metrics_context']['version_metrics'] = $this->compactVersionMetrics($context['metrics_context']['version_metrics']);
         }
@@ -309,6 +325,240 @@ class FinalDecisionAgent
         }
 
         return $context;
+    }
+
+    private function compactMetricsContext(array $metricsContext): array
+    {
+        if (isset($metricsContext['version_metrics']) && is_array($metricsContext['version_metrics'])) {
+            $metricsContext['version_metrics'] = $this->compactVersionMetrics($metricsContext['version_metrics']);
+        }
+
+        if (isset($metricsContext['forecast_evaluations']) && is_array($metricsContext['forecast_evaluations'])) {
+            $metricsContext['forecast_evaluations'] = $this->compactForecastEvaluationsReference($metricsContext['forecast_evaluations']);
+        }
+
+        if (isset($metricsContext['forecast_model_calibration']) && is_array($metricsContext['forecast_model_calibration'])) {
+            $metricsContext['forecast_model_calibration'] = $this->compactForecastCalibrationReference($metricsContext['forecast_model_calibration']);
+        }
+
+        if (isset($metricsContext['evaluations']) && is_array($metricsContext['evaluations'])) {
+            $metricsContext['evaluations'] = $this->compactEvaluations($metricsContext['evaluations']);
+        }
+
+        return $metricsContext;
+    }
+
+    private function compactSpecialistAgents(array $specialistAgents): array
+    {
+        $compact = [];
+
+        foreach ($specialistAgents as $key => $agentOutput) {
+            $compact[$key] = is_array($agentOutput) ? $this->compactAgentOutput($agentOutput) : $agentOutput;
+        }
+
+        return $compact;
+    }
+
+    private function compactAgentOutput(array $agentOutput): array
+    {
+        return array_filter([
+            'agent' => $agentOutput['agent'] ?? null,
+            'status' => $agentOutput['status'] ?? null,
+            'model' => $agentOutput['model'] ?? null,
+            'result' => $agentOutput['result'] ?? [],
+            'error' => $agentOutput['error'] ?? null,
+        ], function ($value) {
+            return $value !== null && $value !== [];
+        });
+    }
+
+    private function compactEvaluations(array $evaluations): array
+    {
+        if (isset($evaluations['forecast_evaluations']) && is_array($evaluations['forecast_evaluations'])) {
+            $evaluations['forecast_evaluations'] = $this->compactForecastEvaluations($evaluations['forecast_evaluations']);
+        }
+
+        if (isset($evaluations['forecast_model_calibration']) && is_array($evaluations['forecast_model_calibration'])) {
+            $evaluations['forecast_model_calibration'] = $this->compactForecastCalibration($evaluations['forecast_model_calibration']);
+        }
+
+        return $evaluations;
+    }
+
+    private function compactForecastEvaluations(array $forecastEvaluations): array
+    {
+        $evaluated = $forecastEvaluations['evaluated'] ?? [];
+        $evaluated = is_array($evaluated) ? $evaluated : [];
+        $latestEvaluation = $this->latestForecastEvaluation($evaluated);
+
+        return [
+            'status' => $forecastEvaluations['status'] ?? null,
+            'checkpoint_window_end' => $forecastEvaluations['checkpoint_window_end'] ?? null,
+            'actual_data_available_until' => $forecastEvaluations['actual_data_available_until'] ?? null,
+            'actual_availability_by_group' => $forecastEvaluations['actual_availability_by_group'] ?? [],
+            'evaluated_count' => $forecastEvaluations['evaluated_count'] ?? count($evaluated),
+            'pending_count' => $forecastEvaluations['pending_count'] ?? count($forecastEvaluations['pending'] ?? []),
+            'skipped_count' => $forecastEvaluations['skipped_count'] ?? count($forecastEvaluations['skipped'] ?? []),
+            'latest_evaluation' => $latestEvaluation ? $this->compactForecastEvaluation($latestEvaluation, true) : null,
+            'recent_evaluation_summaries' => $this->compactRecentEvaluationSummaries($evaluated, 7),
+            'pending' => array_slice($forecastEvaluations['pending'] ?? [], 0, 5),
+            'skipped' => array_slice($forecastEvaluations['skipped'] ?? [], 0, 5),
+        ];
+    }
+
+    private function compactForecastEvaluationsReference(array $forecastEvaluations): array
+    {
+        $evaluated = $forecastEvaluations['evaluated'] ?? [];
+        $evaluated = is_array($evaluated) ? $evaluated : [];
+        $latestEvaluation = $this->latestForecastEvaluation($evaluated);
+
+        return [
+            'status' => $forecastEvaluations['status'] ?? null,
+            'actual_data_available_until' => $forecastEvaluations['actual_data_available_until'] ?? null,
+            'evaluated_count' => $forecastEvaluations['evaluated_count'] ?? count($evaluated),
+            'pending_count' => $forecastEvaluations['pending_count'] ?? count($forecastEvaluations['pending'] ?? []),
+            'skipped_count' => $forecastEvaluations['skipped_count'] ?? count($forecastEvaluations['skipped'] ?? []),
+            'latest_forecast_for_date' => $latestEvaluation['forecast_for_date'] ?? null,
+            'latest_data_as_of_date' => $latestEvaluation['data_as_of_date'] ?? null,
+            'latest_summary' => $latestEvaluation['summary'] ?? [],
+            'detail_location' => 'evaluations.forecast_evaluations',
+        ];
+    }
+
+    private function latestForecastEvaluation(array $evaluations): ?array
+    {
+        $valid = array_values(array_filter($evaluations, function ($evaluation) {
+            return is_array($evaluation) && !empty($evaluation['forecast_for_date']);
+        }));
+
+        if (empty($valid)) {
+            return null;
+        }
+
+        usort($valid, function ($a, $b) {
+            return strcmp((string) ($b['forecast_for_date'] ?? ''), (string) ($a['forecast_for_date'] ?? ''));
+        });
+
+        return $valid[0];
+    }
+
+    private function compactRecentEvaluationSummaries(array $evaluations, int $limit): array
+    {
+        $valid = array_values(array_filter($evaluations, function ($evaluation) {
+            return is_array($evaluation) && !empty($evaluation['forecast_for_date']);
+        }));
+
+        usort($valid, function ($a, $b) {
+            return strcmp((string) ($b['forecast_for_date'] ?? ''), (string) ($a['forecast_for_date'] ?? ''));
+        });
+
+        return array_map(function ($evaluation) {
+            return $this->compactForecastEvaluation($evaluation, false);
+        }, array_slice($valid, 0, $limit));
+    }
+
+    private function compactForecastEvaluation(array $evaluation, bool $includeMetricDetails): array
+    {
+        $compact = [
+            'forecast_for_date' => $evaluation['forecast_for_date'] ?? null,
+            'data_as_of_date' => $evaluation['data_as_of_date'] ?? null,
+            'actual_data_available_until' => $evaluation['actual_data_available_until'] ?? null,
+            'actual_availability_by_group' => $evaluation['actual_availability_by_group'] ?? [],
+            'summary' => $evaluation['summary'] ?? [],
+            'actual_metrics' => $evaluation['actual_metrics'] ?? [],
+        ];
+
+        if ($includeMetricDetails) {
+            $compact['metric_evaluations'] = $this->compactMetricEvaluations($evaluation['metric_evaluations'] ?? []);
+        }
+
+        return $compact;
+    }
+
+    private function compactMetricEvaluations(array $metricEvaluations): array
+    {
+        $compact = [];
+
+        foreach ($metricEvaluations as $group => $metrics) {
+            if (!is_array($metrics)) {
+                continue;
+            }
+
+            foreach ($metrics as $metric => $row) {
+                if (!is_array($row)) {
+                    continue;
+                }
+
+                $compact[$group][$metric] = [
+                    'quality' => $row['quality'] ?? null,
+                    'status' => $row['status'] ?? null,
+                    'actual' => $row['actual'] ?? null,
+                    'forecast_low' => $row['forecast_low'] ?? null,
+                    'forecast_point' => $row['forecast_point'] ?? null,
+                    'forecast_high' => $row['forecast_high'] ?? null,
+                    'range_hit' => $row['range_hit'] ?? null,
+                    'direction_vs_point' => $row['direction_vs_point'] ?? null,
+                    'reason_code' => $row['reason_code'] ?? null,
+                    'maturity' => $this->compactMaturity($row['maturity'] ?? []),
+                ];
+            }
+        }
+
+        return $compact;
+    }
+
+    private function compactMaturity($maturity): array
+    {
+        if (!is_array($maturity)) {
+            return [];
+        }
+
+        return array_filter([
+            'status' => $maturity['status'] ?? null,
+            'is_mature' => $maturity['is_mature'] ?? null,
+            'lag_days' => $maturity['lag_days'] ?? null,
+            'required_actual_until' => $maturity['required_actual_until'] ?? null,
+            'actual_data_available_until' => $maturity['actual_data_available_until'] ?? null,
+            'reason_code' => $maturity['reason_code'] ?? null,
+        ], function ($value) {
+            return $value !== null;
+        });
+    }
+
+    private function compactForecastCalibration(array $calibration): array
+    {
+        return [
+            'status' => $calibration['status'] ?? null,
+            'learning_window' => $calibration['learning_window'] ?? null,
+            'mature_metrics_only' => $calibration['mature_metrics_only'] ?? null,
+            'evaluations_used' => $calibration['evaluations_used'] ?? null,
+            'overall_mature_hit_rate' => $calibration['overall_mature_hit_rate'] ?? null,
+            'mature_metrics_total' => $calibration['mature_metrics_total'] ?? null,
+            'mature_metrics_hit' => $calibration['mature_metrics_hit'] ?? null,
+            'pending_maturity_total' => $calibration['pending_maturity_total'] ?? null,
+            'trust_score' => $calibration['trust_score'] ?? [],
+            'latest_evaluation_summary' => $calibration['latest_evaluation_summary'] ?? [],
+            'group_accuracy' => $calibration['group_accuracy'] ?? [],
+            'bias_detection' => $calibration['bias_detection'] ?? [],
+            'confidence_adjustment' => $calibration['confidence_adjustment'] ?? [],
+            'decision_instruction' => $calibration['decision_instruction'] ?? [],
+            'metric_biases' => array_slice($calibration['metric_biases'] ?? [], 0, 12, true),
+            'evaluation_files_used' => array_slice($calibration['evaluation_files_used'] ?? [], 0, 7),
+        ];
+    }
+
+    private function compactForecastCalibrationReference(array $calibration): array
+    {
+        return [
+            'status' => $calibration['status'] ?? null,
+            'evaluations_used' => $calibration['evaluations_used'] ?? null,
+            'overall_mature_hit_rate' => $calibration['overall_mature_hit_rate'] ?? null,
+            'trust_score' => $calibration['trust_score'] ?? [],
+            'latest_evaluation_summary' => $calibration['latest_evaluation_summary'] ?? [],
+            'bias_detection' => $calibration['bias_detection'] ?? [],
+            'forecast_role' => $calibration['decision_instruction']['forecast_role'] ?? null,
+            'detail_location' => 'evaluations.forecast_model_calibration',
+        ];
     }
 
     private function compactVersionMetrics(array $versionMetrics): array

@@ -109,8 +109,8 @@ class DecisionScenarioSimulator
         ];
 
         $agentContext = [
-            'metrics_context' => $metrics,
-            'tomorrow_forecast_metrics' => $tomorrowForecastMetrics,
+            'metrics_context' => $this->compactMetricsContext($metrics),
+            'tomorrow_forecast_metrics' => $this->compactTomorrowForecastMetrics($tomorrowForecastMetrics),
             'input_availability_check' => [
                 'has_tomorrow_forecast_metrics' => !empty($tomorrowForecastMetrics),
                 'has_forecast_for_date' => !empty($tomorrowForecastMetrics['forecast_for_date']),
@@ -130,10 +130,10 @@ class DecisionScenarioSimulator
                 'operational_action_plan' => $finalDecision['operational_action_plan'] ?? [],
                 'action_plan' => $finalDecision['action_plan'] ?? [],
             ],
-            'specialist_agents' => $specialistAgents,
-            'ads_agent_result' => $adsAgent,
-            'tomorrow_forecast_agent_result' => $forecastAgent,
-            'evaluations' => $evaluations,
+            'specialist_agents' => $this->compactSpecialistAgents($specialistAgents),
+            'ads_agent_result' => $this->compactAgentResult($adsAgent),
+            'tomorrow_forecast_agent_result' => $this->compactAgentResult($forecastAgent),
+            'evaluations' => $this->compactEvaluations($evaluations),
             'strict_rules' => [
                 'This simulator compares deterministic baseline forecast against the recommended action from FinalDecisionAgent.',
                 'The recommended action is available in final_decision_agent / final_decision, especially business_verdict, today_operator_summary, operating_decision, prioritized_actions, operational_action_plan, and action_plan.',
@@ -155,6 +155,137 @@ class DecisionScenarioSimulator
             $expectedSchema,
             $agentContext
         );
+    }
+
+    private function compactMetricsContext(array $metrics): array
+    {
+        return array_filter([
+            'summary' => $metrics['summary'] ?? null,
+            'guardrail_policy' => $metrics['guardrail_policy'] ?? null,
+            'forecast_model_calibration' => $this->onlyKeys($metrics['forecast_model_calibration'] ?? [], [
+                'calibration_date',
+                'evaluations_used',
+                'overall_mature_hit_rate',
+                'trust_score',
+                'trust_interpretation',
+                'forecast_role',
+                'systematic_bias_detected',
+                'latest_evaluation_summary',
+            ]),
+            'tomorrow_forecast_metrics' => $this->compactTomorrowForecastMetrics($metrics['tomorrow_forecast_metrics'] ?? []),
+            'activation_summary' => $metrics['activation_summary'] ?? null,
+            'retention_summary' => $metrics['retention_summary'] ?? null,
+            'monetization_summary' => $metrics['monetization_summary'] ?? null,
+            'ads_summary' => $metrics['ads_summary'] ?? null,
+        ], function ($value) {
+            return $value !== null && $value !== [];
+        });
+    }
+
+    private function compactTomorrowForecastMetrics(array $forecast): array
+    {
+        return array_filter([
+            'forecast_for_date' => $forecast['forecast_for_date'] ?? null,
+            'data_as_of_date' => $forecast['data_as_of_date'] ?? null,
+            'forecast_latest_quality' => $forecast['forecast_latest_quality'] ?? null,
+            'forecast_trust_score' => $forecast['forecast_trust_score'] ?? null,
+            'forecast_role' => $forecast['forecast_role'] ?? null,
+            'risk_flags' => $forecast['risk_flags'] ?? null,
+            'predicted_metrics' => $this->compactPredictedMetrics($forecast['predicted_metrics'] ?? []),
+            'forecast_engine' => $forecast['forecast_engine'] ?? null,
+            'source' => $forecast['source'] ?? null,
+        ], function ($value) {
+            return $value !== null && $value !== [];
+        });
+    }
+
+    private function compactPredictedMetrics(array $predictedMetrics): array
+    {
+        $groups = ['activation', 'retention', 'monetization'];
+        $result = [];
+
+        foreach ($groups as $group) {
+            if (!isset($predictedMetrics[$group]) || !is_array($predictedMetrics[$group])) {
+                continue;
+            }
+
+            $result[$group] = array_slice($predictedMetrics[$group], 0, 8, true);
+        }
+
+        return $result;
+    }
+
+    private function compactSpecialistAgents(array $specialistAgents): array
+    {
+        $result = [];
+
+        foreach ($specialistAgents as $key => $agent) {
+            $agentResult = $agent['result'] ?? $agent;
+            $result[$key] = $this->compactAgentResult(is_array($agentResult) ? $agentResult : []);
+        }
+
+        return $result;
+    }
+
+    private function compactAgentResult(array $agent): array
+    {
+        return array_filter($this->onlyKeys($agent, [
+            'agent',
+            'status',
+            'summary',
+            'business_verdict',
+            'today_operator_summary',
+            'forecast_for_date',
+            'data_as_of_date',
+            'forecast_quality',
+            'forecast_role',
+            'trust_score',
+            'guardrail_assessment',
+            'risk_flags',
+            'operating_decision',
+            'prioritized_actions',
+            'operational_action_plan',
+            'action_plan',
+            'recommended_actions',
+            'risk_notes',
+        ]), function ($value) {
+            return $value !== null && $value !== [];
+        });
+    }
+
+    private function compactEvaluations(array $evaluations): array
+    {
+        $items = array_slice($evaluations, -5);
+
+        return array_map(function ($evaluation) {
+            if (!is_array($evaluation)) {
+                return $evaluation;
+            }
+
+            return $this->onlyKeys($evaluation, [
+                'forecast_for_date',
+                'data_as_of_date',
+                'evaluation_status',
+                'actual_data_available_until',
+                'summary',
+                'latest_quality',
+                'forecast_quality',
+                'hit_rate',
+            ]);
+        }, $items);
+    }
+
+    private function onlyKeys(array $source, array $keys): array
+    {
+        $result = [];
+
+        foreach ($keys as $key) {
+            if (array_key_exists($key, $source)) {
+                $result[$key] = $source[$key];
+            }
+        }
+
+        return $result;
     }
 
     public function run(array $context): array
