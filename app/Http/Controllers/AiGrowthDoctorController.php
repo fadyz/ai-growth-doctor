@@ -173,9 +173,15 @@ class AiGrowthDoctorController extends Controller
                 'ai_version_agent' => [],
                 'ai_ads_agent' => [],
                 'ai_tomorrow_forecast_agent' => [],
+                'structured_negotiation' => [],
+                'orchestrator_evidence_assembly' => [],
                 'ai_final_decision_agent' => [],
                 'decision_scenario_simulator' => [],
             ],
+            'structured_negotiation' => [],
+            'conflict_matrix' => [],
+            'negotiation_summary' => [],
+            'orchestrator_evidence_assembly' => [],
             'charts' => [
                 'activation_trend' => [],
                 'retention_trend' => [],
@@ -282,6 +288,8 @@ class AiGrowthDoctorController extends Controller
         $aiVersionAgent = $orchestration['agents']['ai_version_agent'] ?? [];
         $aiAdsAgent = $orchestration['agents']['ai_ads_agent'] ?? [];
         $aiTomorrowForecastAgent = $orchestration['agents']['ai_tomorrow_forecast_agent'] ?? [];
+        $structuredNegotiation = $orchestration['structured_negotiation'] ?? [];
+        $orchestratorEvidenceAssembly = $orchestration['orchestrator_evidence_assembly'] ?? [];
         $aiDecisionAgent = $orchestration['agents']['ai_final_decision_agent'] ?? [];
         $decisionScenarioSimulator = $orchestration['agents']['decision_scenario_simulator'] ?? [];
 
@@ -296,6 +304,10 @@ class AiGrowthDoctorController extends Controller
             ],
             'workflow' => $orchestration['workflow'] ?? [],
             'interaction_log' => $orchestration['interaction_log'] ?? [],
+            'structured_negotiation' => $structuredNegotiation,
+            'conflict_matrix' => $orchestration['conflict_matrix'] ?? ($structuredNegotiation['conflicts'] ?? []),
+            'negotiation_summary' => $orchestration['negotiation_summary'] ?? ($structuredNegotiation['summary'] ?? []),
+            'orchestrator_evidence_assembly' => $orchestratorEvidenceAssembly,
             'metrics' => [
                 'activation_metrics' => $activationMetrics,
                 'retention_metrics' => $retentionMetrics,
@@ -322,6 +334,16 @@ class AiGrowthDoctorController extends Controller
                 'ai_version_agent' => $aiVersionAgent,
                 'ai_ads_agent' => $aiAdsAgent,
                 'ai_tomorrow_forecast_agent' => $aiTomorrowForecastAgent,
+                'structured_negotiation' => [
+                    'agent' => 'Structured Negotiation Service',
+                    'status' => !empty($structuredNegotiation) ? 'active' : 'empty',
+                    'result' => $structuredNegotiation,
+                ],
+                'orchestrator_evidence_assembly' => [
+                    'agent' => 'Orchestrator Evidence Assembly',
+                    'status' => !empty($orchestratorEvidenceAssembly) ? 'active' : 'empty',
+                    'result' => $orchestratorEvidenceAssembly,
+                ],
                 'ai_final_decision_agent' => $aiDecisionAgent,
                 'decision_scenario_simulator' => $decisionScenarioSimulator,
             ],

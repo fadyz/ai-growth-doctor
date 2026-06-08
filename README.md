@@ -63,3 +63,59 @@ Lihat penjelasan arsitektur sistem di:
 ```text
 docs/ARCHITECTURE.md
 ```
+
+## Menjalankan Lokal Dengan Docker
+
+Jalankan stack lokal:
+
+```bash
+make dev
+```
+
+Jika ingin AI agents aktif, pass API key dari shell sebelum menjalankan Docker:
+
+```bash
+export OPENAI_API_KEY="isi_api_key"
+make dev
+```
+
+AI output language default untuk Docker adalah English. Untuk menggantinya:
+
+```bash
+export AI_OUTPUT_LANGUAGE="Indonesian"
+make dev
+```
+
+Atau gunakan provider Sumopod:
+
+```bash
+export SUMOPOD_API_KEY="isi_api_key"
+make dev
+```
+
+Command ini menjalankan Laravel web server di Docker, MySQL, dan worker:
+
+```text
+php artisan growth-doctor:work --sleep=1
+```
+
+Aplikasi dapat dibuka di:
+
+```text
+http://localhost:8080
+```
+
+Database Docker tersedia dari host di port `3307` dengan credential:
+
+```text
+database: ai_growth_doctor
+username: laravel
+password: secret
+root password: root
+```
+
+Untuk menjalankan asset watcher Laravel Mix:
+
+```bash
+make assets
+```

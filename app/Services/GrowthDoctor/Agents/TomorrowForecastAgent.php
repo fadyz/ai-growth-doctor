@@ -34,6 +34,7 @@ class TomorrowForecastAgent
 
     public function buildRequest(array $metricsContext): array
     {
+        $language = $this->client->outputLanguage();
         $forecastMetrics = $metricsContext['tomorrow_forecast_metrics'] ?? [];
         $activationMetrics = $metricsContext['activation_metrics'] ?? [];
         $retentionMetrics = $metricsContext['retention_metrics'] ?? [];
@@ -44,15 +45,15 @@ class TomorrowForecastAgent
 
         return $this->client->prepareRequest(
             'Tomorrow Forecast Agent',
-            'You are the Tomorrow Forecast Agent for AI Growth Doctor. The numeric forecast has already been calculated by a deterministic forecast engine. You must not invent, recalculate, or modify numeric forecast values. Use only numbers that exist in tomorrow_forecast_metrics. Your job is to interpret the deterministic baseline forecast, identify tomorrow\'s operational risk, explain how forecast risk flags should influence today\'s decision, and propose one preventive action. If a metric is missing, say unavailable. Forecast fields such as risk_flags, deprecated guardrails, scaling_caution, or old scaling_guardrail are forecast caution signals only, not deterministic GuardrailPolicyEngine triggers, not direct contact with GuardrailPolicyEngine, and not vetoes. Consider forecast evaluation and calibration only as trust-weighting evidence. Return valid JSON only in Indonesian. No markdown, no prose outside JSON, no code fences.',
+            'You are the Tomorrow Forecast Agent for AI Growth Doctor. The numeric forecast has already been calculated by a deterministic forecast engine. You must not invent, recalculate, or modify numeric forecast values. Use only numbers that exist in tomorrow_forecast_metrics. Your job is to interpret the deterministic baseline forecast, identify tomorrow\'s operational risk, explain how forecast risk flags should influence today\'s decision, and propose one preventive action. If a metric is missing, say unavailable. Forecast fields such as risk_flags, deprecated guardrails, scaling_caution, or old scaling_guardrail are forecast caution signals only, not deterministic GuardrailPolicyEngine triggers, not direct contact with GuardrailPolicyEngine, and not vetoes. Consider forecast evaluation and calibration only as trust-weighting evidence. Return valid JSON only in ' . $language . '. No markdown, no prose outside JSON, no code fences.',
             [
                 'prediction_status' => 'healthy | watch | warning | critical | no_forecast_metrics',
                 'confidence_score' => '0-100 integer; confidence in the interpretation, not invented forecast accuracy',
                 'forecast_for_date' => 'YYYY-MM-DD or null from tomorrow_forecast_metrics',
                 'data_as_of_date' => 'YYYY-MM-DD or null from tomorrow_forecast_metrics',
                 'forecast_engine' => 'method/formula from tomorrow_forecast_metrics if available',
-                'executive_summary' => 'short Indonesian summary of deterministic forecast and risk',
-                'summary' => 'short Indonesian one-sentence forecast summary for interaction log; should mirror executive_summary but shorter',
+                'executive_summary' => 'short ' . $language . ' summary of deterministic forecast and risk',
+                'summary' => 'short ' . $language . ' one-sentence forecast summary for interaction log; should mirror executive_summary but shorter',
                 'main_predicted_risk' => 'single biggest predicted risk based only on provided forecast metrics',
                 'decision_impact_today' => 'how deterministic forecast should affect today operating decision',
                 'forecast_evidence' => [
@@ -119,6 +120,8 @@ class TomorrowForecastAgent
             return null;
         }
 
+        $english = strtolower($this->client->outputLanguage()) === 'english';
+
         return [
             'agent' => 'Tomorrow Forecast Agent',
             'status' => 'inactive',
@@ -126,7 +129,9 @@ class TomorrowForecastAgent
             'result' => [
                 'prediction_status' => 'no_forecast_metrics',
                 'confidence_score' => 0,
-                'summary' => 'Tomorrow forecast metrics belum tersedia. Pastikan MetricsExtractor mengirim tomorrow_forecast_metrics.',
+                'summary' => $english
+                    ? 'Tomorrow forecast metrics are not available yet. Make sure MetricsExtractor sends tomorrow_forecast_metrics.'
+                    : 'Tomorrow forecast metrics belum tersedia. Pastikan MetricsExtractor mengirim tomorrow_forecast_metrics.',
                 'forecast_for_date' => null,
                 'predicted_metrics' => [],
                 'risk_flags' => [],

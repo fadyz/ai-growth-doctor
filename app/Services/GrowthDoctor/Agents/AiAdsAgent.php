@@ -34,6 +34,7 @@ class AiAdsAgent
 
     public function buildRequest(array $metricsContext): array
     {
+        $language = $this->client->outputLanguage();
         $adsMetrics = $metricsContext['ads_metrics'] ?? [];
         $activationMetrics = $metricsContext['activation_metrics'] ?? [];
         $retentionMetrics = $metricsContext['retention_metrics'] ?? [];
@@ -123,7 +124,7 @@ class AiAdsAgent
 
         return $this->client->prepareRequest(
             'AI Ads Agent',
-            'You are the Ads Acquisition Specialist Agent in a multi-agent growth doctor system for the Hitung Kalori app. Analyze Google Ads performance from ads_metrics, including campaign lifecycle context. You must not treat a degraded legacy campaign as the main campaign to continue if a reset successor exists. When degraded legacy and reset successor both exist, produce a concrete reset-campaign posture: shift_to_reset_campaign or evaluate_reset_successor, with cautious_test/evaluate_reset_campaign as the budget decision unless reset successor data is clearly deteriorating. Separate ads supply health from downstream product quality. Be precise with ads metric semantics: conversion_change_pct is conversion count/volume change, not conversion-rate change; compare recent_3d.conversion_rate against previous_7d.conversion_rate when discussing conversion rate. Ads can support maintain, reduce, hold, shift attention to reset, or cautious reset test decisions, but it cannot override weak retention by itself. Return valid JSON only in Indonesian. No markdown, no prose outside JSON, no code fences.',
+            'You are the Ads Acquisition Specialist Agent in a multi-agent growth doctor system for the Hitung Kalori app. Analyze Google Ads performance from ads_metrics, including campaign lifecycle context. You must not treat a degraded legacy campaign as the main campaign to continue if a reset successor exists. When degraded legacy and reset successor both exist, produce a concrete reset-campaign posture: shift_to_reset_campaign or evaluate_reset_successor, with cautious_test/evaluate_reset_campaign as the budget decision unless reset successor data is clearly deteriorating. Separate ads supply health from downstream product quality. Be precise with ads metric semantics: conversion_change_pct is conversion count/volume change, not conversion-rate change; compare recent_3d.conversion_rate against previous_7d.conversion_rate when discussing conversion rate. Ads can support maintain, reduce, hold, shift attention to reset, or cautious reset test decisions, but it cannot override weak retention by itself. Return valid JSON only in ' . $language . '. No markdown, no prose outside JSON, no code fences.',
             $expectedSchema,
             $agentContext
         );
@@ -136,6 +137,8 @@ class AiAdsAgent
         if (!empty($adsMetrics) && ($adsMetrics['status'] ?? null) !== 'no_ads_data') {
             return null;
         }
+
+        $english = strtolower($this->client->outputLanguage()) === 'english';
 
         return [
             'agent' => 'AI Ads Agent',
@@ -150,20 +153,28 @@ class AiAdsAgent
                     'blocked_action' => 'ads_based_recommendation',
                 ],
                 'confidence_score' => 0,
-                'main_diagnosis' => 'Belum ada data Google Ads di checkpoint, jadi Ads Agent belum memengaruhi final decision.',
+                'main_diagnosis' => $english
+                    ? 'No Google Ads data is available in the checkpoint, so the Ads Agent does not affect the final decision yet.'
+                    : 'Belum ada data Google Ads di checkpoint, jadi Ads Agent belum memengaruhi final decision.',
                 'campaign_lifecycle_interpretation' => [
                     'legacy_campaign_status' => 'no_ads_data',
                     'reset_campaign_status' => 'no_ads_data',
-                    'operator_action_interpretation' => 'Tidak ada campaign ads yang bisa dievaluasi.',
+                    'operator_action_interpretation' => $english
+                        ? 'No ads campaign can be evaluated.'
+                        : 'Tidak ada campaign ads yang bisa dievaluasi.',
                 ],
                 'reset_campaign_decision' => [
                     'recommended_posture' => 'monitor_only',
-                    'why' => 'Tidak ada data reset campaign yang bisa dievaluasi.',
+                    'why' => $english
+                        ? 'No reset campaign data is available for evaluation.'
+                        : 'Tidak ada data reset campaign yang bisa dievaluasi.',
                     'allowed_today' => 'use_non_ads_evidence',
                     'not_allowed_today' => 'ads_based_recommendation',
                     'success_metric_to_watch' => 'ads data availability in next checkpoint',
                 ],
-                'impact_on_final_decision' => 'Ads evidence unavailable; Final Decision harus memakai activation, retention, monetization, version, forecast, dan evaluation evidence.',
+                'impact_on_final_decision' => $english
+                    ? 'Ads evidence is unavailable; Final Decision must use activation, retention, monetization, version, forecast, and evaluation evidence.'
+                    : 'Ads evidence unavailable; Final Decision harus memakai activation, retention, monetization, version, forecast, dan evaluation evidence.',
             ],
         ];
     }

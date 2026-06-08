@@ -291,6 +291,13 @@ class AiAgentClient
         ];
     }
 
+    public function outputLanguage(): string
+    {
+        $language = trim((string) env('AI_OUTPUT_LANGUAGE', 'Indonesian'));
+
+        return $language !== '' ? $language : 'Indonesian';
+    }
+
     private function buildRequestPayload(string $agentName, string $systemPrompt, array $expectedSchema, array $agentContext): array
     {
         $apiKey = $this->apiKey();

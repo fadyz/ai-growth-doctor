@@ -227,6 +227,7 @@ class RunProgressStore
             'version_agent' => $this->step('Version Agent'),
             'ads_agent' => $this->step('Ads Agent'),
             'tomorrow_forecast_agent' => $this->step('Tomorrow Forecast Agent'),
+            'structured_negotiation' => $this->step('Structured Negotiation'),
             'final_decision_agent' => $this->step('Final Decision Agent'),
             'decision_scenario_simulator' => $this->step('Decision Scenario Simulator'),
             'done' => $this->step('Done'),
@@ -302,7 +303,7 @@ class RunProgressStore
             return [];
         }
 
-        return [
+        $normalized = [
             'mode' => $execution['mode'] ?? null,
             'request_key' => $execution['request_key'] ?? null,
             'parallel_pool' => (bool) ($execution['parallel_pool'] ?? false),
@@ -310,12 +311,37 @@ class RunProgressStore
             'request_finished_at' => $execution['request_finished_at'] ?? null,
             'request_duration_ms' => $execution['request_duration_ms'] ?? null,
         ];
+
+        foreach (['max_rounds', 'agent_response_count', 'conflict_count', 'total_conflict_count', 'material_conflict_count', 'critical_conflict_count', 'material_or_higher_conflict_count'] as $key) {
+            if (array_key_exists($key, $execution)) {
+                $normalized[$key] = $execution[$key];
+            }
+        }
+
+        return array_filter($normalized, function ($value) {
+            return $value !== null;
+        });
     }
 
     private function summarizeStepResult($result): ?string
     {
         if (!is_array($result)) {
             return null;
+        }
+
+        if (($result['negotiation_type'] ?? null) === 'single_round_structured_cross_examination') {
+            $summary = $result['summary'] ?? [];
+            $total = (int) ($summary['total_conflict_count'] ?? count($result['conflicts'] ?? []));
+            $critical = (int) ($summary['critical_conflict_count'] ?? 0);
+            $material = (int) ($summary['material_conflict_count'] ?? 0);
+
+            if ($total === 0) {
+                return '0 conflicts detected; no material objection';
+            }
+
+            $conflictLabel = $total === 1 ? 'conflict' : 'conflicts';
+
+            return $total . ' ' . $conflictLabel . ' detected: ' . $critical . ' critical, ' . $material . ' material';
         }
 
         if (!empty($result['status'])) {

@@ -27,14 +27,16 @@ class ActivationAgent
 
     public function buildRequest(array $context): array
     {
+        $language = $this->client->outputLanguage();
+
         return $this->client->prepareRequest(
             'AI Activation Agent',
-            'You are a senior AI Activation Analyst for a mobile calorie tracking app. Focus only on activation: first_open, onboarding, diary/home reach, workspace reach, and food_add_success. Diagnose the most likely activation bottleneck, separate metric facts from hypotheses, assess confidence, and propose one small measurable experiment. Do not discuss retention, ads, or revenue except as guardrails. Return valid JSON only in Indonesian.',
+            'You are a senior AI Activation Analyst for a mobile calorie tracking app. Focus only on activation: first_open, onboarding, diary/home reach, workspace reach, and food_add_success. Diagnose the most likely activation bottleneck, separate metric facts from hypotheses, assess confidence, and propose one small measurable experiment. Do not discuss retention, ads, or revenue except as guardrails. Return valid JSON only in ' . $language . '.',
             [
                 'status' => 'healthy | stable | warning | critical',
                 'confidence_score' => '0-100 integer; confidence in the diagnosis',
                 'main_leak' => 'where the activation funnel leaks most',
-                'diagnosis' => 'activation diagnosis in Indonesian',
+                'diagnosis' => 'activation diagnosis in ' . $language,
                 'metric_facts' => ['fact 1 from provided metrics', 'fact 2 from provided metrics'],
                 'hypotheses' => ['hypothesis 1', 'hypothesis 2'],
                 'guardrail_metrics' => ['metric to watch 1', 'metric to watch 2'],

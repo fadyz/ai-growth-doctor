@@ -15,6 +15,7 @@ class DecisionScenarioSimulator
 
     public function buildRequest(array $context): array
     {
+        $language = $this->client->outputLanguage();
         $metrics = $context['metrics_context'] ?? $context['metrics'] ?? [];
         $finalDecisionEnvelope = $context['final_decision']
             ?? ($context['ai_final_decision_agent'] ?? []);
@@ -151,7 +152,7 @@ class DecisionScenarioSimulator
 
         return $this->client->prepareRequest(
             'Decision Scenario Simulator',
-            'You are the Decision Scenario Simulator in a multi-agent growth doctor system for the Hitung Kalori app. Your job is to compare the baseline no-major-intervention forecast from tomorrow_forecast_metrics with the recommended action produced by FinalDecisionAgent. The final decision may be nested under final_decision_agent/final_decision and includes fields such as business_verdict, today_operator_summary, operating_decision, prioritized_actions, operational_action_plan, and action_plan. You must not create a new recommendation, override GuardrailPolicyEngine, or invent exact uplift numbers without experiment/holdout evidence. Produce a probabilistic, evidence-bounded scenario in Indonesian. Use forecast risk flags as cautions, not deterministic guardrails. Return valid JSON only. No markdown, no prose outside JSON, no code fences.',
+            'You are the Decision Scenario Simulator in a multi-agent growth doctor system for the Hitung Kalori app. Your job is to compare the baseline no-major-intervention forecast from tomorrow_forecast_metrics with the recommended action produced by FinalDecisionAgent. The final decision may be nested under final_decision_agent/final_decision and includes fields such as business_verdict, today_operator_summary, operating_decision, prioritized_actions, operational_action_plan, and action_plan. You must not create a new recommendation, override GuardrailPolicyEngine, or invent exact uplift numbers without experiment/holdout evidence. Produce a probabilistic, evidence-bounded scenario in ' . $language . '. Use forecast risk flags as cautions, not deterministic guardrails. Return valid JSON only. No markdown, no prose outside JSON, no code fences.',
             $expectedSchema,
             $agentContext
         );

@@ -27,16 +27,18 @@ class VersionAgent
 
     public function buildRequest(array $context): array
     {
+        $language = $this->client->outputLanguage();
+
         return $this->client->prepareRequest(
             'AI Version Agent',
-            'You are a senior AI Release Risk Analyst for a mobile calorie tracking app. Compare app versions using session users, workspace users, food_add_success, paywall, and purchase. Be careful with small samples, old versions, and mixed rollout periods. Identify which versions are major enough to trust, which versions should be excluded as noisy, which version needs monitoring, and whether rollout should continue, hold, rollback, or need more data. Separate metric facts from hypotheses. Return valid JSON only in Indonesian.',
+            'You are a senior AI Release Risk Analyst for a mobile calorie tracking app. Compare app versions using session users, workspace users, food_add_success, paywall, and purchase. Be careful with small samples, old versions, and mixed rollout periods. Identify which versions are major enough to trust, which versions should be excluded as noisy, which version needs monitoring, and whether rollout should continue, hold, rollback, or need more data. Separate metric facts from hypotheses. Return valid JSON only in ' . $language . '.',
             [
                 'status' => 'safe | caution | risky | insufficient_sample',
                 'confidence_score' => '0-100 integer; confidence in the diagnosis',
                 'best_version' => 'version name or null',
                 'version_under_watch' => 'version name or null',
                 'rollout_decision' => 'continue | hold | rollback | need_more_data',
-                'diagnosis' => 'version/release diagnosis in Indonesian',
+                'diagnosis' => 'version/release diagnosis in ' . $language,
                 'trusted_versions' => ['versions with enough user base'],
                 'excluded_or_noisy_versions' => ['versions that are too small, too old, or noisy'],
                 'metric_facts' => ['fact 1 from provided metrics', 'fact 2 from provided metrics'],

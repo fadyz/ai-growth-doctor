@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="id">
+<html lang="en">
 <head>
     <meta charset="UTF-8">
     <title>AI Growth Doctor</title>
@@ -21,6 +21,11 @@
         @keyframes spin {
             to { transform: rotate(360deg); }
         }
+
+        .agd-wrap-anywhere {
+            overflow-wrap: anywhere;
+            word-break: break-word;
+        }
     </style>
 </head>
 <body class="bg-slate-100 text-slate-900 overflow-x-hidden">
@@ -29,7 +34,7 @@
             <div class="loading-spinner"></div>
             <div>
                 <div class="font-bold text-slate-950">Running AI Growth Doctor</div>
-                <div class="text-sm text-slate-500">Memanggil agents, membaca cache, dan menyusun business decision...</div>
+                <div class="text-sm text-slate-500">Calling agents, reading cache, and composing the business decision...</div>
             </div>
         </div>
     </div>
@@ -86,6 +91,15 @@
         $forecastEvaluationDecisionImpact = $aiResult['forecast_evaluation_decision_impact'] ?? [];
         $forecastCalibrationDecisionImpact = $aiResult['forecast_calibration_decision_impact'] ?? [];
         $decisionRiskAssessment = $aiResult['decision_risk_assessment'] ?? [];
+        $structuredNegotiation = $analysis['structured_negotiation'] ?? ($agents['structured_negotiation']['result'] ?? []);
+        $negotiationRules = $structuredNegotiation['rules'] ?? [];
+        $negotiationResponses = $structuredNegotiation['agent_responses'] ?? [];
+        $negotiationTimeline = $structuredNegotiation['negotiation_timeline'] ?? [];
+        $conflictMatrix = $analysis['conflict_matrix'] ?? ($structuredNegotiation['conflicts'] ?? []);
+        $negotiationSummary = $analysis['negotiation_summary'] ?? ($structuredNegotiation['summary'] ?? []);
+        $baselineComparison = $structuredNegotiation['baseline_comparison'] ?? [];
+        $singleAgentBaseline = $baselineComparison['single_agent_baseline'] ?? [];
+        $agentSocietyBaseline = $baselineComparison['agent_society'] ?? [];
         $forecastCalibration = $analysis['evaluations']['forecast_model_calibration'] ?? [];
         $forecastCalibrationTrustScore = $forecastCalibrationDecisionImpact['trust_score']
             ?? ($forecastCalibration['trust_score']['updated_score'] ?? null);
@@ -196,67 +210,67 @@
             [
                 'step' => 1,
                 'agent' => 'Activation Agent',
-                'dialogue_turn' => 'Activation Agent: Add-food flow bukan bottleneck utama. Setelah user mencapai workspace, food_add_success terlihat cukup sehat; masalahnya ada pada session ke workspace.',
+                'dialogue_turn' => 'Activation Agent: The add-food flow is not the main bottleneck. Once users reach the workspace, food_add_success looks reasonably healthy; the problem is getting sessions into the workspace.',
                 'evidence' => $agentDebate['activation_agent_view'] ?? ($aiActivationResult['diagnosis'] ?? ($aiResult['main_diagnosis'] ?? '-')),
-                'objection_or_veto' => 'Menolak menyalahkan fitur tambah makanan sebagai akar masalah utama.',
+                'objection_or_veto' => 'Rejects blaming the add-food feature as the main root cause.',
                 'vote' => 'investigate',
-                'impact_on_final_decision' => 'Fokus keputusan bergeser ke perbaikan entry menuju workspace dan onboarding/home CTA.',
+                'impact_on_final_decision' => 'The decision focus shifts to improving workspace entry and onboarding/home CTA.',
             ],
             [
                 'step' => 2,
                 'agent' => 'Monetization Agent',
-                'dialogue_turn' => 'Monetization Agent: Ada sinyal revenue awal, tetapi sample purchase kecil dan paywall global berisiko terlalu dini.',
+                'dialogue_turn' => 'Monetization Agent: There is an early revenue signal, but the purchase sample is small and a global paywall risks appearing too early.',
                 'evidence' => $agentDebate['monetization_agent_view'] ?? ($aiMonetizationResult['diagnosis'] ?? ($aiResult['business_status'] ?? '-')),
-                'objection_or_veto' => 'Menuntut revenue opportunity tetap diuji, tetapi hanya lewat segmentasi.',
+                'objection_or_veto' => 'Keeps the revenue opportunity testable, but only through segmentation.',
                 'vote' => $operatingDecision['monetization_decision']['decision'] ?? 'segment_only',
-                'impact_on_final_decision' => 'Monetisasi tidak dimatikan, tetapi dibatasi pada cohort yang sudah mencapai value moment.',
+                'impact_on_final_decision' => 'Monetization is not turned off, but limited to cohorts that already reached the value moment.',
             ],
             [
                 'step' => 3,
                 'agent' => 'Retention Agent',
-                'dialogue_turn' => 'Retention Agent: Saya memveto scaling agresif karena D1/habit masih lemah; traffic tambahan akan bocor sebelum menjadi kebiasaan.',
+                'dialogue_turn' => 'Retention Agent: I caution against aggressive scaling because D1/habit is still weak; extra traffic will leak before becoming a habit.',
                 'evidence' => $agentDebate['retention_agent_view'] ?? ($aiRetentionResult['diagnosis'] ?? ($aiResult['business_status'] ?? '-')),
-                'objection_or_veto' => $aiResult['agent_conflicts'][0] ?? 'Veto terhadap scale ads/paywall sebelum D1 logged rate membaik.',
-                'vote' => 'veto_scale',
-                'impact_on_final_decision' => 'Ads ditahan, product priority diarahkan ke retensi dan D0-D1 loop.',
+                'objection_or_veto' => $aiResult['agent_conflicts'][0] ?? 'Constrains ads/paywall scaling before D1 logged rate improves.',
+                'vote' => 'caution_against_scale',
+                'impact_on_final_decision' => 'Ads are held, and product priority shifts to retention and the D0-D1 loop.',
             ],
             [
                 'step' => 4,
                 'agent' => 'Version Agent',
-                'dialogue_turn' => 'Version Agent: Release tidak terlihat sebagai sumber risiko utama; rollout boleh lanjut bertahap dengan guardrail.',
+                'dialogue_turn' => 'Version Agent: Release does not look like the main risk source; rollout can continue gradually with guardrails.',
                 'evidence' => $agentDebate['version_agent_view'] ?? ($aiVersionResult['diagnosis'] ?? ($operatingDecision['release_decision']['reason'] ?? '-')),
                 'objection_or_veto' => $aiResult['agent_conflicts'][1] ?? null,
                 'vote' => $operatingDecision['release_decision']['decision'] ?? 'continue_with_monitoring',
-                'impact_on_final_decision' => 'Final decision tidak memilih rollback; fokus tetap pada retention dan monetization timing.',
+                'impact_on_final_decision' => 'The final decision does not choose rollback; focus stays on retention and monetization timing.',
             ],
             [
                 'step' => 5,
                 'agent' => 'Ads Agent',
-                'dialogue_turn' => 'Ads Agent: Saya membaca performa acquisition dan lifecycle campaign. Volume Stabil lama tidak boleh otomatis dianggap campaign utama jika sudah ditandai degraded legacy dan ada Volume Install Reset sebagai reset successor.',
+                'dialogue_turn' => 'Ads Agent: I read acquisition performance and campaign lifecycle. The old Volume Stabil campaign should not automatically be treated as the main campaign if it is marked degraded legacy and Volume Install Reset exists as the reset successor.',
                 'evidence' => $agentDebate['ads_agent_view'] ?? ($aiAdsResult['main_diagnosis'] ?? ($adsMetrics['diagnosis'] ?? '-')),
-                'objection_or_veto' => $aiAdsResult['campaign_lifecycle_interpretation']['operator_action_interpretation'] ?? 'Jangan tafsirkan pause/reduce Volume Stabil sebagai mematikan acquisition jika reset campaign sedang dievaluasi.',
+                'objection_or_veto' => $aiAdsResult['campaign_lifecycle_interpretation']['operator_action_interpretation'] ?? 'Do not interpret pausing/reducing Volume Stabil as shutting down acquisition if the reset campaign is being evaluated.',
                 'vote' => $aiAdsResult['ads_verdict'] ?? ($adsMetrics['ads_verdict']['decision'] ?? 'monitor_ads'),
-                'impact_on_final_decision' => $aiAdsResult['impact_on_final_decision'] ?? ($adsMetrics['ads_verdict']['final_decision_impact'] ?? 'Ads menjadi supporting evidence untuk keputusan budget.'),
+                'impact_on_final_decision' => $aiAdsResult['impact_on_final_decision'] ?? ($adsMetrics['ads_verdict']['final_decision_impact'] ?? 'Ads become supporting evidence for the budget decision.'),
             ],
             [
                 'step' => 6,
                 'agent' => 'Tomorrow Forecast Agent',
-                'dialogue_turn' => 'Tomorrow Forecast Agent: Forecast besok memperkuat guardrail keputusan hari ini; scaling hanya boleh dilakukan jika risiko prediksi activation/retention tetap aman.',
+                'dialogue_turn' => 'Tomorrow Forecast Agent: Tomorrow forecast strengthens today decision guardrails; scaling is allowed only if predicted activation/retention risk stays safe.',
                 'evidence' => 'Forecast date: ' . ($aiTomorrowForecastResult['forecast_for_date'] ?? ($tomorrowForecastMetrics['forecast_for_date'] ?? '-')) . '; scaling guardrail: ' . ($tomorrowGuardrails['scaling_guardrail'] ?? '-') . '; main risk: ' . ($aiTomorrowForecastResult['main_predicted_risk'] ?? '-'),
                 'objection_or_veto' => ($tomorrowGuardrails['scaling_guardrail'] ?? null) === 'block_scaling'
-                    ? 'Forecast memblokir scaling agresif karena guardrail besok diprediksi belum aman.'
-                    : 'Forecast tidak memblokir eksperimen kecil, tetapi tetap meminta evaluasi actual besok.',
+                    ? 'Forecast blocks aggressive scaling because tomorrow guardrails are predicted to be unsafe.'
+                    : 'Forecast does not block small experiments, but still requires actual evaluation tomorrow.',
                 'vote' => ($tomorrowGuardrails['scaling_guardrail'] ?? null) === 'block_scaling'
                     ? 'forecast_blocks_scaling'
                     : 'forecast_allows_cautious_test',
-                'impact_on_final_decision' => $aiTomorrowForecastResult['decision_impact_today'] ?? 'Forecast menjadi forward-looking guardrail untuk keputusan hari ini.',
+                'impact_on_final_decision' => $aiTomorrowForecastResult['decision_impact_today'] ?? 'Forecast becomes a forward-looking guardrail for today decision.',
             ],
             [
                 'step' => 7,
                 'agent' => 'Final Decision Agent',
-                'dialogue_turn' => 'Final Decision Agent: Retention veto lebih kuat daripada monetization upside; keputusan hari ini adalah Hold & Optimize, bukan scale agresif.',
+                'dialogue_turn' => 'Final Decision Agent: The retention constraint is stronger than monetization upside; today decision is Hold & Optimize, not aggressive scaling.',
                 'evidence' => $agentDebate['final_resolution'] ?? ($aiResult['main_diagnosis'] ?? ($aiResult['business_verdict_reasoning'] ?? '-')),
-                'objection_or_veto' => 'Menggabungkan revenue signal, release safety, dan retention guardrail menjadi satu operating decision.',
+                'objection_or_veto' => 'Combines revenue signal, release safety, and retention guardrail into one operating decision.',
                 'vote' => strtolower((string) ($aiResult['business_verdict'] ?? 'hold_and_optimize')),
                 'impact_on_final_decision' => $todayOperatorSummary ?? ($aiResult['executive_summary'] ?? '-'),
             ],
@@ -390,7 +404,7 @@
 
                 <div id="asyncRunResultActions" class="hidden mt-5 bg-emerald-50 border border-emerald-200 rounded-xl p-4">
                     <div class="font-semibold text-emerald-900 mb-1">Run completed</div>
-                    <p class="text-sm text-emerald-800 mb-3">Semua agent selesai. Refresh dashboard untuk memuat hasil terbaru dari run ini.</p>
+                    <p class="text-sm text-emerald-800 mb-3">All agents completed. Refresh the dashboard to load the latest result from this run.</p>
                     <button type="button" data-show-loading="true" onclick="window.location.href='?no_auto=1'" class="inline-flex items-center rounded-full bg-emerald-700 text-white px-4 py-2 text-sm font-semibold hover:bg-emerald-800 transition">
                         Load Result Into Dashboard
                     </button>
@@ -452,7 +466,7 @@
                 <div class="flex flex-col md:flex-row md:items-end md:justify-between gap-3 mb-4">
                     <div>
                         <h2 class="text-xl font-bold">Current Operating Decisions</h2>
-                        <p class="text-sm text-slate-500">Keputusan operasional berdasarkan latest available data. Klik card untuk melihat reason, next action, dan guardrail.</p>
+                        <p class="text-sm text-slate-500">Operating decisions based on the latest available data. Click a card to inspect the reason, next action, and guardrail.</p>
                     </div>
                     @if (!empty($todayOperatorSummary))
                         <div class="max-w-2xl text-sm text-slate-600 bg-white border border-slate-200 rounded-2xl px-4 py-3 shadow-sm">
@@ -611,7 +625,7 @@
                     <button type="button" @click="openInsight = openInsight === 'debate' ? null : 'debate'" class="bg-white rounded-2xl p-5 shadow-sm border border-slate-200 min-w-0 text-left hover:border-indigo-300 hover:bg-indigo-50/40 transition">
                         <div class="flex h-full flex-col justify-between gap-4">
                             <div>
-                                <div class="text-sm text-slate-500 mb-1">Decision Evidence</div>
+                                <div class="text-sm text-slate-500 mb-1">Final Decision Evidence Map</div>
                                 <div class="text-2xl font-bold text-slate-950">{{ count($debateLog) }}</div>
                                 <div class="text-xs text-slate-500 mt-1">signals</div>
                             </div>
@@ -662,7 +676,7 @@
                     <div class="flex items-start justify-between gap-4 mb-5">
                         <div>
                             <h3 class="text-lg font-bold">Forecast Evaluation</h3>
-                            <p class="text-sm text-slate-500">Membandingkan forecast yang dibuat dari checkpoint sebelumnya dengan actual metric dari checkpoint terbaru.</p>
+                            <p class="text-sm text-slate-500">Compares the forecast created from the previous checkpoint with actual metrics from the latest checkpoint.</p>
                         </div>
                         <button type="button" @click="openInsight = null" class="text-xs text-slate-500 hover:text-slate-900">Close</button>
                     </div>
@@ -732,7 +746,7 @@
                             <div class="bg-amber-50 border border-amber-200 rounded-xl p-4 mb-4 text-sm text-amber-900">
                                 <div class="font-semibold mb-1">Cohort Maturity Note</div>
                                 <div>
-                                    Beberapa metric harian belum fair untuk dinilai karena actual row yang dibutuhkan belum matang. Note ini sekarang hanya berlaku untuk daily forecast evaluation. Metric retention 7D dipisahkan ke panel terpisah agar tidak tercampur dengan pola “prediksi kemarin vs realisasi hari ini”.
+                                    Some daily metrics are not fair to evaluate yet because the required actual rows have not matured. This note now applies only to daily forecast evaluation. 7D retention metrics are separated into their own panel so they do not mix with the "yesterday prediction vs today realization" pattern.
                                 </div>
                             </div>
                         @endif
@@ -826,7 +840,7 @@
                                     <div class="bg-amber-50 border-b border-amber-200 px-4 py-3 text-sm text-amber-900">
                                         <div class="font-semibold mb-1">Retention Maturity Note</div>
                                         <div>
-                                            Habit 7D dan Avg Log Days 7D dibaca sebagai metric cohort/retention yang matang beberapa hari kemudian. Panel ini dipisahkan dari daily forecast evaluation agar tidak tercampur dengan pola “prediksi kemarin vs realisasi hari ini”.
+                                            Habit 7D and Avg Log Days 7D are treated as cohort/retention metrics that mature several days later. This panel is separated from daily forecast evaluation so it does not mix with the "yesterday prediction vs today realization" pattern.
                                         </div>
                                     </div>
                                 @endif
@@ -885,7 +899,7 @@
                         @endif
                     @else
                         <div class="bg-slate-50 border border-slate-200 rounded-xl p-4 text-sm text-slate-600">
-                            Belum ada forecast yang siap dievaluasi. Forecast akan dievaluasi otomatis setelah checkpoint terbaru memiliki <code>meta.window_end</code> yang sama atau lebih baru dari <code>forecast_for_date</code>.
+                            No forecast is ready for evaluation yet. Forecasts will be evaluated automatically after the latest checkpoint has a <code>meta.window_end</code> equal to or newer than <code>forecast_for_date</code>.
                         </div>
                     @endif
                 </div>
@@ -928,7 +942,7 @@
                 </div>
 
                 <div
-                    x-data="{ showSignals: true, showLearning: false, showResolution: true, showScenario: false, }"
+                    x-data="{ showSignals: true, openEvidence: null, showLearning: false, showResolution: true, showScenario: false, }"
                     x-show="openInsight === 'debate'"
                     x-cloak
                     x-transition:enter="transition ease-out duration-300"
@@ -941,69 +955,78 @@
                 >
                     <div class="flex items-start justify-between gap-4 mb-5">
                         <div>
-                            <h3 class="text-lg font-bold">Decision Evidence & Synthesis</h3>
-                            <p class="text-sm text-slate-500">Ringkasan {{ count($debateLog) }} sinyal keputusan yang dipertimbangkan Final Decision Agent. Ini bukan urutan proses linear; specialist agents berjalan sebagai parallel fan-out evidence layer, lalu Final Decision Agent melakukan fan-in synthesis.</p>
+                            <h3 class="text-lg font-bold">Final Decision Evidence Map</h3>
+                            <p class="text-sm text-slate-500">Evidence layers consumed by the Final Decision Agent. This is not a debate transcript or a step-by-step sequence; specialists are peer inputs and the final agent performs fan-in synthesis.</p>
                         </div>
                         <button type="button" @click="openInsight = null" class="text-xs text-slate-500 hover:text-slate-900">Close</button>
                     </div>
 
                     <button type="button" @click="showSignals = !showSignals" class="w-full mb-3 flex items-start justify-between gap-4 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-left hover:bg-slate-100 transition">
                         <div>
-                            <div class="text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">Evidence Signals</div>
-                            <div class="text-sm text-slate-500">{{ count($debateLog) }} sinyal utama dari agent/specialist. Ini adalah evidence map dari parallel specialist layer, bukan step-by-step reasoning sequence.</div>
+                            <div class="text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">Evidence Map</div>
+                            <div class="text-sm text-slate-500">{{ count($debateLog) }} evidence items from specialist agents, deterministic guardrails, forecast/calibration, structured negotiation, and final resolution.</div>
                         </div>
                         <div class="shrink-0 text-xs font-semibold text-slate-500" x-text="showSignals ? 'Hide' : 'Show'"></div>
                     </button>
 
-                    <div x-show="showSignals" x-cloak x-transition class="relative">
-                        <div class="absolute left-5 top-3 bottom-3 w-px bg-slate-200 hidden md:block"></div>
-                        <div class="space-y-4">
+                    <div x-show="showSignals" x-cloak x-transition>
+                        <div class="overflow-hidden rounded-2xl border border-slate-200">
+                            <div class="overflow-x-auto">
+                                <table class="min-w-full text-sm">
+                                    <thead class="bg-slate-50 text-slate-500">
+                                        <tr>
+                                            <th class="text-left px-4 py-3">Layer</th>
+                                            <th class="text-left px-4 py-3">Signal</th>
+                                            <th class="text-left px-4 py-3">Decision Weight</th>
+                                            <th class="text-left px-4 py-3">Detail</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody class="divide-y divide-slate-100 bg-white">
                             @foreach ($debateLog as $trace)
                                 @php
                                     $vote = strtolower((string) ($trace['vote'] ?? ''));
                                     $voteTone = 'bg-slate-50 text-slate-700 ring-slate-200';
-                                    $dotTone = 'bg-slate-400';
-                                    if (str_contains($vote, 'veto') || str_contains($vote, 'hold') || str_contains($vote, 'reduce') || str_contains($vote, 'segment')) {
+                                    if (str_contains($vote, 'veto') || str_contains($vote, 'hold') || str_contains($vote, 'reduce') || str_contains($vote, 'segment') || str_contains($vote, 'caution')) {
                                         $voteTone = 'bg-amber-50 text-amber-700 ring-amber-200';
-                                        $dotTone = 'bg-amber-500';
                                     }
                                     if (str_contains($vote, 'scale') || str_contains($vote, 'continue')) {
                                         $voteTone = 'bg-emerald-50 text-emerald-700 ring-emerald-200';
-                                        $dotTone = 'bg-emerald-500';
                                     }
                                     if (str_contains($vote, 'rollback') || str_contains($vote, 'pause')) {
-                                        $voteTone = 'bg-rose-50 text-rose-700 ring-1 ring-rose-200';
-                                        $dotTone = 'bg-rose-500';
+                                        $voteTone = 'bg-rose-50 text-rose-700 ring-rose-200';
                                     }
                                 @endphp
-                                <div class="relative md:pl-14">
-                                    <div class="absolute left-0 top-4 hidden md:flex w-10 h-10 rounded-full bg-white border border-slate-200 items-center justify-center shadow-sm">
-                                        <span class="w-2.5 h-2.5 rounded-full {{ $dotTone }}"></span>
-                                    </div>
-
-                                    <div class="border border-slate-200 rounded-2xl p-4 bg-slate-50">
-                                        <div class="flex flex-col md:flex-row md:items-start md:justify-between gap-3 mb-3">
-                                            <div>
-                                                <div class="text-xs text-slate-500 mb-1">Signal {{ $loop->iteration }}</div>
-                                                <div class="font-semibold text-slate-950">{{ $trace['agent'] ?? '-' }}</div>
-                                            </div>
-                                            <span class="inline-flex w-fit rounded-full px-3 py-1 text-[11px] font-semibold ring-1 {{ $voteTone }}">
+                                            <tr class="align-top">
+                                                <td class="px-4 py-3">
+                                                    <div class="text-xs text-slate-500 mb-1">Item {{ $loop->iteration }}</div>
+                                                    <div class="font-semibold text-slate-950">{{ $trace['agent'] ?? '-' }}</div>
+                                                </td>
+                                                <td class="px-4 py-3 min-w-[280px]">
+                                                    <div class="font-medium text-slate-900 line-clamp-2 agd-wrap-anywhere">{{ $trace['dialogue_turn'] ?? ($trace['position'] ?? '-') }}</div>
+                                                    <span class="mt-2 inline-flex w-fit rounded-full px-2.5 py-1 text-[11px] font-semibold ring-1 {{ $voteTone }}">
                                                 {{ strtoupper(str_replace('_', ' ', $trace['vote'] ?? 'no vote')) }}
-                                            </span>
-                                        </div>
-
-                                        <div class="text-base font-medium text-slate-900 mb-3 leading-relaxed">
-                                            “{{ $trace['dialogue_turn'] ?? ($trace['position'] ?? '-') }}”
-                                        </div>
-
-                                        <div class="grid grid-cols-1 lg:grid-cols-3 gap-3 text-sm text-slate-700">
-                                            <div class="bg-white border border-slate-200 rounded-xl p-3"><strong>Evidence</strong><br>{{ $displayValue($trace['evidence'] ?? '-') }}</div>
-                                            <div class="bg-white border border-slate-200 rounded-xl p-3"><strong>Counter-signal / Guardrail</strong><br>{{ $displayValue($trace['objection_or_veto'] ?? '-') }}</div>
-                                            <div class="bg-white border border-slate-200 rounded-xl p-3"><strong>Decision Weight</strong><br>{{ $displayValue($trace['impact_on_final_decision'] ?? '-') }}</div>
-                                        </div>
-                                    </div>
-                                </div>
+                                                    </span>
+                                                </td>
+                                                <td class="px-4 py-3 min-w-[220px] agd-wrap-anywhere">{{ $displayValue($trace['impact_on_final_decision'] ?? '-') }}</td>
+                                                <td class="px-4 py-3">
+                                                    <button type="button" @click="openEvidence = openEvidence === {{ $loop->iteration }} ? null : {{ $loop->iteration }}" class="inline-flex rounded-full border border-slate-200 px-3 py-1 text-xs font-semibold text-slate-600 hover:bg-slate-50">
+                                                        <span x-text="openEvidence === {{ $loop->iteration }} ? 'Hide' : 'View'"></span>
+                                                    </button>
+                                                </td>
+                                            </tr>
+                                            <tr x-show="openEvidence === {{ $loop->iteration }}" x-cloak x-transition>
+                                                <td colspan="4" class="bg-slate-50 px-4 py-4">
+                                                    <div class="grid grid-cols-1 md:grid-cols-3 gap-3 text-sm text-slate-700">
+                                                        <div class="bg-white border border-slate-200 rounded-xl p-3 min-w-0 agd-wrap-anywhere"><strong>Evidence</strong><br>{{ $displayValue($trace['evidence'] ?? '-') }}</div>
+                                                        <div class="bg-white border border-slate-200 rounded-xl p-3 min-w-0 agd-wrap-anywhere"><strong>Constraint / Counter-signal</strong><br>{{ $displayValue($trace['objection_or_veto'] ?? '-') }}</div>
+                                                        <div class="bg-white border border-slate-200 rounded-xl p-3 min-w-0 agd-wrap-anywhere"><strong>Full Decision Weight</strong><br>{{ $displayValue($trace['impact_on_final_decision'] ?? '-') }}</div>
+                                                    </div>
+                                                </td>
+                                            </tr>
                             @endforeach
+                                    </tbody>
+                                </table>
+                            </div>
                         </div>
                     </div>
 
@@ -1013,7 +1036,7 @@
                             <div class="flex flex-col md:flex-row md:items-start md:justify-between gap-3">
                                 <div>
                                     <div class="text-xs font-semibold uppercase tracking-[0.16em] text-violet-700">Learning & Risk Adjustments</div>
-                                    <div class="text-sm text-violet-900 mt-1">Deterministic guardrail, ads acquisition, forecast, evaluation, calibration memory, dan risiko jika keputusan salah.</div>
+                                    <div class="text-sm text-violet-900 mt-1">Deterministic guardrail, ads acquisition, forecast, evaluation, calibration memory, and the risk if the decision is wrong.</div>
                                     <div class="text-xs text-violet-700 mt-2">
                                         Preview: policy {{ strtoupper(str_replace('_', ' ', $deterministicGuardrailBasis['winning_guardrail'] ?? ($guardrailPolicy['winning_guardrail'] ?? '-'))) }} · ads {{ strtoupper(str_replace('_', ' ', $adsDecisionImpact['ads_verdict'] ?? ($aiAdsResult['ads_verdict'] ?? ($adsMetrics['ads_verdict']['decision'] ?? '-')))) }} · trust {{ $forecastCalibrationTrustScore !== null ? $forecastCalibrationTrustScore . '/100' : '-' }}
                                     </div>
@@ -1032,7 +1055,7 @@
                                     <div class="text-xs font-semibold uppercase tracking-[0.16em] text-slate-600 mb-1">Deterministic Decision Basis</div>
                                     <h4 class="text-lg font-bold text-slate-950">Guardrail Policy Engine</h4>
                                     <p class="text-sm text-slate-600 mt-1 leading-relaxed">
-                                        Layer deterministic yang menentukan guardrail aktif, blocked actions, allowed actions, dan winning guardrail sebelum Final Decision Agent membuat narasi.
+                                        Deterministic layer that determines active guardrails, blocked actions, allowed actions, and the winning guardrail before the Final Decision Agent writes the narrative.
                                     </p>
                                 </div>
                                 <span class="shrink-0 inline-flex w-fit rounded-full px-3 py-1 text-[11px] font-semibold bg-white text-slate-700 ring-1 ring-slate-200">
@@ -1144,7 +1167,7 @@
                                     <div class="text-xs font-semibold uppercase tracking-[0.16em] text-sky-700 mb-1">Ads Acquisition Impact</div>
                                     <h4 class="text-lg font-bold text-sky-950">AI Ads Agent Decision Impact</h4>
                                     <p class="text-sm text-sky-900 mt-1 leading-relaxed">
-                                        Dampak performa Google Ads, lifecycle campaign, dan reset campaign terhadap keputusan budget hari ini.
+                                        Impact of Google Ads performance, campaign lifecycle, and reset campaign on today budget decision.
                                     </p>
                                 </div>
                                 <span class="shrink-0 inline-flex w-fit rounded-full px-3 py-1 text-[11px] font-semibold bg-white text-sky-700 ring-1 ring-sky-200">
@@ -1235,7 +1258,7 @@
                                     <div class="text-xs font-semibold uppercase tracking-[0.16em] text-blue-700 mb-1">Forecast Impact</div>
                                     <h4 class="text-lg font-bold text-blue-950">Tomorrow Forecast Decision Impact</h4>
                                     <p class="text-sm text-blue-900 mt-1 leading-relaxed">
-                                        Dampak prediksi kuantitatif besok terhadap keputusan operasional hari ini.
+                                        Impact of tomorrow quantitative prediction on today operating decision.
                                     </p>
                                 </div>
                                 <span class="shrink-0 inline-flex w-fit rounded-full px-3 py-1 text-[11px] font-semibold bg-white text-blue-700 ring-1 ring-blue-200">
@@ -1266,7 +1289,7 @@
                                     <div class="text-xs font-semibold uppercase tracking-[0.16em] text-emerald-700 mb-1">Evaluation Impact</div>
                                     <h4 class="text-lg font-bold text-emerald-950">Forecast Evaluation Decision Impact</h4>
                                     <p class="text-sm text-emerald-900 mt-1 leading-relaxed">
-                                        Dampak akurasi forecast sebelumnya terhadap trust, guardrail, dan keputusan operasional hari ini.
+                                        Impact of previous forecast accuracy on trust, guardrails, and today operating decision.
                                     </p>
                                 </div>
                                 <span class="shrink-0 inline-flex w-fit rounded-full px-3 py-1 text-[11px] font-semibold bg-white text-emerald-700 ring-1 ring-emerald-200">
@@ -1321,7 +1344,7 @@
                                     <div class="text-xs font-semibold uppercase tracking-[0.16em] text-violet-700 mb-1">Calibration Impact</div>
                                     <h4 class="text-lg font-bold text-violet-950">Forecast Calibration Decision Impact</h4>
                                     <p class="text-sm text-violet-900 mt-1 leading-relaxed">
-                                        Dampak histori akurasi forecast terhadap bobot evidence hari ini. Ini bukan keputusan utama, hanya weighting layer.
+                                        Impact of forecast accuracy history on today evidence weight. This is not the primary decision, only a weighting layer.
                                     </p>
                                 </div>
                                 <span class="shrink-0 inline-flex w-fit rounded-full px-3 py-1 text-[11px] font-semibold bg-white text-violet-700 ring-1 ring-violet-200">
@@ -1360,7 +1383,7 @@
                                     <div class="text-xs font-semibold uppercase tracking-[0.16em] text-rose-700 mb-1">Decision Risk</div>
                                     <h4 class="text-lg font-bold text-rose-950">Decision Risk Assessment</h4>
                                     <p class="text-sm text-rose-900 mt-1 leading-relaxed">
-                                        Keputusan, alasan, confidence, risiko jika salah, dan kondisi kapan keputusan harus dibalik.
+                                        Decision, reason, confidence, risk if wrong, and the condition that should reverse the decision.
                                     </p>
                                 </div>
                                 <span class="shrink-0 inline-flex w-fit rounded-full px-3 py-1 text-[11px] font-semibold bg-white text-rose-700 ring-1 ring-rose-200">
@@ -1408,7 +1431,7 @@
                                 <div class="flex flex-col md:flex-row md:items-start md:justify-between gap-3">
                                     <div>
                                         <div class="text-xs font-semibold uppercase tracking-[0.16em] text-cyan-700">Decision Scenario Simulation</div>
-                                        <div class="text-sm text-cyan-900 mt-1">Membandingkan baseline tanpa intervensi besar dengan skenario jika rekomendasi final dijalankan.</div>
+                                        <div class="text-sm text-cyan-900 mt-1">Compares the baseline without major intervention against the scenario if the final recommendation is executed.</div>
                                         <div class="text-xs text-cyan-700 mt-2">
                                             Preview: {{ strtoupper(str_replace('_', ' ', $scenarioRecommendedAction['action'] ?? ($decisionScenarioResult['simulation_type'] ?? 'baseline_vs_recommended_action'))) }} · confidence {{ strtoupper(str_replace('_', ' ', $scenarioIntervention['confidence'] ?? '-')) }}
                                         </div>
@@ -1425,7 +1448,7 @@
                                         <div class="text-xs font-semibold uppercase tracking-[0.16em] text-cyan-700 mb-1">Baseline vs Recommended Action</div>
                                         <h4 class="text-lg font-bold text-cyan-950">Decision Scenario Simulator</h4>
                                         <p class="text-sm text-cyan-900 mt-1 leading-relaxed">
-                                            Ini adalah simulasi probabilistik berbasis evidence, bukan forecast deterministic baru dan bukan janji uplift pasti.
+                                            This is an evidence-based probabilistic simulation, not a new deterministic forecast and not a guaranteed uplift promise.
                                         </p>
                                     </div>
                                     <span class="shrink-0 inline-flex w-fit rounded-full px-3 py-1 text-[11px] font-semibold bg-white text-cyan-700 ring-1 ring-cyan-200">
@@ -1499,8 +1522,8 @@
                                     <div class="text-xs font-semibold uppercase tracking-[0.16em] {{ $isNormalOperatingResolution ? 'text-emerald-700' : 'text-amber-700' }}">Final Resolution</div>
                                     <div class="text-sm {{ $isNormalOperatingResolution ? 'text-emerald-900' : 'text-amber-900' }} mt-1">
                                         {{ $isNormalOperatingResolution
-                                            ? 'Resolusi operasional final saat tidak ada deterministic guardrail yang terpicu: keputusan normal, constraint sempit, dan aksi yang masih diizinkan.'
-                                            : 'Guardrail yang akhirnya menang, keputusan yang diblokir, dan keputusan operasional yang masih diizinkan.' }}
+                                            ? 'Final operating resolution when no deterministic guardrail is triggered: normal decision, narrow constraints, and actions that remain allowed.'
+                                            : 'The guardrail that ultimately wins, the blocked decision, and the operating decision that remains allowed.' }}
                                     </div>
                                     <div class="text-xs {{ $isNormalOperatingResolution ? 'text-emerald-700' : 'text-amber-700' }} mt-2">
                                         Preview: {{ strtoupper($conflictPreviewLabel) }} · blocked {{ strtoupper(str_replace('_', ' ', $conflictRule['blocked_decision'] ?? ($guardrailDeterministicDecision['blocked_decision'] ?? '-'))) }} · allowed {{ strtoupper(str_replace('_', ' ', $conflictRule['allowed_decision'] ?? ($guardrailDeterministicDecision['allowed_decision'] ?? '-'))) }}
@@ -1527,11 +1550,11 @@
                             <div class="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
                                 <div class="bg-white/80 border {{ $isNormalOperatingResolution ? 'border-emerald-200 text-emerald-950' : 'border-amber-200 text-amber-950' }} rounded-xl p-3">
                                     <div class="text-xs font-semibold {{ $isNormalOperatingResolution ? 'text-emerald-700' : 'text-amber-700' }} mb-1">Rule Triggered</div>
-                                    {{ $isNormalOperatingResolution ? ($conflictRule['rule_triggered'] ?? 'Tidak ada deterministic guardrail triggered.') : ($conflictRule['rule_triggered'] ?? '-') }}
+                                    {{ $isNormalOperatingResolution ? ($conflictRule['rule_triggered'] ?? 'No deterministic guardrail was triggered.') : ($conflictRule['rule_triggered'] ?? '-') }}
                                 </div>
                                 <div class="bg-white/80 border {{ $isNormalOperatingResolution ? 'border-emerald-200 text-emerald-950' : 'border-amber-200 text-amber-950' }} rounded-xl p-3">
                                     <div class="text-xs font-semibold {{ $isNormalOperatingResolution ? 'text-emerald-700' : 'text-amber-700' }} mb-1">Why It Wins</div>
-                                    {{ $isNormalOperatingResolution ? ($conflictRule['why_veto_won'] ?? 'Tidak ada veto yang menang karena tidak ada deterministic guardrail yang terpicu.') : ($conflictRule['why_veto_won'] ?? '-') }}
+                                    {{ $isNormalOperatingResolution ? ($conflictRule['why_veto_won'] ?? 'No deterministic guardrail won because no deterministic guardrail was triggered.') : ($conflictRule['why_veto_won'] ?? '-') }}
                                 </div>
                                 <div class="bg-white/80 border {{ $isNormalOperatingResolution ? 'border-emerald-200 text-emerald-950' : 'border-amber-200 text-amber-950' }} rounded-xl p-3">
                                     <div class="text-xs font-semibold text-rose-700 mb-1">Blocked Decision</div>
@@ -1546,7 +1569,7 @@
                             @php
                                 $objectiveThresholds = $conflictRule['objective_thresholds_used'] ?? [];
                                 if ($isNormalOperatingResolution && empty($objectiveThresholds)) {
-                                    $objectiveThresholds = ['Tidak ada threshold deterministic yang terpicu.'];
+                                    $objectiveThresholds = ['No deterministic threshold was triggered.'];
                                 }
                             @endphp
                             @if (!empty($objectiveThresholds))
@@ -1579,7 +1602,7 @@
                     <div class="flex items-start justify-between gap-4 mb-5">
                         <div>
                             <h3 class="text-lg font-bold">Operational Action Plan</h3>
-                            <p class="text-sm text-slate-500">Rencana aksi yang bisa dieksekusi dan dievaluasi secara objektif.</p>
+                            <p class="text-sm text-slate-500">Action plan that can be executed and evaluated objectively.</p>
                         </div>
                         <button type="button" @click="openInsight = null" class="text-xs text-slate-500 hover:text-slate-900">Close</button>
                     </div>
@@ -1612,7 +1635,7 @@
                             @endforeach
                         </div>
                     @else
-                        <p class="text-sm text-slate-500">Operational action plan belum tersedia. Clear cache dan generate ulang analysis setelah patch FinalDecisionAgent.</p>
+                        <p class="text-sm text-slate-500">Operational action plan is not available yet. Clear cache and regenerate the analysis after the FinalDecisionAgent patch.</p>
                     @endif
                 </div>
 
@@ -1630,7 +1653,7 @@
                     <div class="flex items-start justify-between gap-4 mb-5">
                         <div>
                             <h3 class="text-lg font-bold">Previous Decision Evaluation</h3>
-                            <p class="text-sm text-slate-500">Loop evaluasi: apakah keputusan checkpoint sebelumnya terbukti benar dari outcome saat ini?</p>
+                            <p class="text-sm text-slate-500">Evaluation loop: did the previous checkpoint decision prove correct based on the current outcome?</p>
                         </div>
                         <button type="button" @click="openInsight = null" class="text-xs text-slate-500 hover:text-slate-900">Close</button>
                     </div>
@@ -1682,7 +1705,7 @@
             <div class="mb-4 flex flex-col md:flex-row md:items-end md:justify-between gap-2">
                 <div>
                     <h2 class="text-xl font-bold">Specialist AI Agents</h2>
-                    <p class="text-sm text-slate-500 mt-1">Ringkasan 6 specialist agent. Klik satu kartu untuk membuka detail analisisnya.</p>
+                    <p class="text-sm text-slate-500 mt-1">Summary of 6 specialist agents. Click a card to open its analysis detail.</p>
                 </div>
                 <div class="text-xs text-slate-500 bg-slate-100 border border-slate-200 rounded-full px-3 py-1 w-fit">
                     Evidence layer · Activation · Retention · Monetization · Version · Ads · Forecast
@@ -1777,7 +1800,7 @@
                             <div class="text-xs text-slate-500 mb-2">Confidence {{ $aiAdsResult['confidence_score'] }}/100</div>
                         @endif
                         <p class="text-slate-600 text-sm line-clamp-2">
-                            {{ $aiAdsResult['main_diagnosis'] ?? ($adsMetrics['ads_verdict']['reason'] ?? 'Ads acquisition evidence belum tersedia.') }}
+                            {{ $aiAdsResult['main_diagnosis'] ?? ($adsMetrics['ads_verdict']['reason'] ?? 'Ads acquisition evidence is not available yet.') }}
                         </p>
                     </div>
                 </button>
@@ -1797,7 +1820,7 @@
                             <div class="text-xs text-slate-500 mb-2">Confidence {{ $aiTomorrowForecastResult['confidence_score'] }}/100</div>
                         @endif
                         <p class="text-slate-600 text-sm line-clamp-2">
-                            {{ $aiTomorrowForecastResult['executive_summary'] ?? ($aiTomorrowForecastResult['main_predicted_risk'] ?? 'Forecast kuantitatif besok belum tersedia.') }}
+                            {{ $aiTomorrowForecastResult['executive_summary'] ?? ($aiTomorrowForecastResult['main_predicted_risk'] ?? 'Tomorrow quantitative forecast is not available yet.') }}
                         </p>
                     </div>
                 </button>
@@ -1816,7 +1839,7 @@
                 <div class="flex items-start justify-between gap-4 mb-4">
                     <div>
                         <h3 class="text-lg font-bold">Tomorrow Forecast Agent Detail</h3>
-                        <p class="text-sm text-slate-500">Forecast kuantitatif berbasis latest available data. Evaluasi hanya dilakukan saat actual data untuk forecast date sudah tersedia.</p>
+                        <p class="text-sm text-slate-500">Quantitative forecast based on the latest available data. Evaluation runs only when actual data for the forecast date is available.</p>
                     </div>
                     <button type="button" @click="openAgent = null" class="text-xs text-slate-500 hover:text-slate-900">Close</button>
                 </div>
@@ -2091,7 +2114,7 @@
                 <div class="flex items-start justify-between gap-4 mb-4">
                     <div>
                         <h3 class="text-lg font-bold">AI Ads Agent Detail</h3>
-                        <p class="text-sm text-slate-500">Membaca performa Google Ads, lifecycle campaign, dan konteks reset campaign agar keputusan budget tidak salah tafsir.</p>
+                        <p class="text-sm text-slate-500">Reads Google Ads performance, campaign lifecycle, and reset campaign context so the budget decision is not misinterpreted.</p>
                     </div>
                     <button type="button" @click="openAgent = null" class="text-xs text-slate-500 hover:text-slate-900">Close</button>
                 </div>
@@ -2193,6 +2216,184 @@
             </div>
         </div>
 
+        <div class="bg-white rounded-2xl shadow-sm border border-slate-200 mb-8 overflow-hidden">
+            @if (empty($structuredNegotiation))
+                <div class="p-5">
+                    <div class="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400 mb-1">Agent Society Layer</div>
+                    <h2 class="text-xl font-bold">Single-Round Structured Negotiation</h2>
+                    <p class="text-sm text-slate-500 mt-1">Structured negotiation was not run for this analysis.</p>
+                </div>
+            @else
+                <div class="p-5 border-b border-slate-200">
+                    <div class="flex flex-col md:flex-row md:items-start md:justify-between gap-3">
+                        <div>
+                            <div class="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400 mb-1">Agent Society Layer</div>
+                            <h2 class="text-xl font-bold">Single-Round Structured Negotiation</h2>
+                            <p class="text-sm text-slate-500 mt-1">Peer specialist summaries are examined once in a structured matrix. Rows are not debate turns; each specialist can respond once using auditable evidence refs.</p>
+                        </div>
+                        <span class="inline-flex w-fit rounded-full px-3 py-1 text-[11px] font-semibold bg-slate-100 text-slate-700 ring-1 ring-slate-200">
+                            ROUND {{ $structuredNegotiation['round'] ?? 1 }}
+                        </span>
+                    </div>
+                </div>
+
+                <div class="p-5">
+                    <div class="grid grid-cols-1 md:grid-cols-4 gap-3 mb-5">
+                        <div class="bg-slate-50 border border-slate-200 rounded-xl p-4">
+                            <div class="text-xs text-slate-500 mb-1">Max Round</div>
+                            <div class="text-lg font-bold">{{ $negotiationRules['max_rounds'] ?? 1 }}</div>
+                        </div>
+                        <div class="bg-slate-50 border border-slate-200 rounded-xl p-4">
+                            <div class="text-xs text-slate-500 mb-1">Evidence Required</div>
+                            <div class="text-lg font-bold">{{ !empty($negotiationRules['evidence_required_for_objection']) ? 'YES' : 'NO' }}</div>
+                        </div>
+                        <div class="bg-slate-50 border border-slate-200 rounded-xl p-4">
+                            <div class="text-xs text-slate-500 mb-1">Final Owner</div>
+                            <div class="text-lg font-bold">{{ $negotiationRules['final_decision_owner'] ?? 'FinalDecisionAgent' }}</div>
+                        </div>
+                        <div class="bg-slate-50 border border-slate-200 rounded-xl p-4">
+                            <div class="text-xs text-slate-500 mb-1">Raw Chain-of-thought</div>
+                            <div class="text-lg font-bold">{{ !empty($negotiationRules['raw_chain_of_thought_allowed']) ? 'ALLOWED' : 'NOT ALLOWED' }}</div>
+                        </div>
+                    </div>
+
+                    @if (!empty($negotiationTimeline) || !empty($negotiationResponses))
+                        @php $timelineRows = !empty($negotiationTimeline) ? $negotiationTimeline : $negotiationResponses; @endphp
+                        <details class="mb-5 rounded-2xl border border-slate-200 bg-slate-50">
+                            <summary class="cursor-pointer list-none p-4">
+                                <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-2">
+                                <div>
+                                    <div class="font-semibold text-slate-900">Cross-Agent Response Matrix</div>
+                                    <div class="text-xs text-slate-500 mt-1">{{ count($timelineRows) }} single-round peer responses. Order is display-only, not a sequential debate.</div>
+                                </div>
+                                    <span class="inline-flex w-fit rounded-full px-3 py-1 text-[11px] font-semibold bg-indigo-50 text-indigo-700 ring-1 ring-indigo-200">
+                                        VIEW MATRIX
+                                    </span>
+                                </div>
+                            </summary>
+                            <div class="overflow-x-auto border-t border-slate-200 bg-white">
+                                <div class="border border-transparent rounded-b-2xl">
+                                <table class="min-w-full text-sm">
+                                    <thead class="bg-slate-50 text-slate-500">
+                                        <tr>
+                                            <th class="text-left px-4 py-2">From</th>
+                                            <th class="text-left px-4 py-2">To</th>
+                                            <th class="text-left px-4 py-2">Type</th>
+                                            <th class="text-left px-4 py-2">Severity</th>
+                                            <th class="text-left px-4 py-2">Claim</th>
+                                            <th class="text-left px-4 py-2">Evidence</th>
+                                            <th class="text-left px-4 py-2">Revised Recommendation</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody class="divide-y divide-slate-100">
+                                        @foreach ($timelineRows as $response)
+                                            @php
+                                                $severity = strtolower((string) ($response['severity'] ?? 'none'));
+                                                $severityClass = in_array($severity, ['material', 'critical'], true)
+                                                    ? 'bg-amber-50 text-amber-700 ring-amber-200'
+                                                    : 'bg-slate-50 text-slate-600 ring-slate-200';
+                                                $responseType = $response['type'] ?? ($response['response_type'] ?? '-');
+                                            @endphp
+                                            <tr>
+                                                <td class="px-4 py-3 font-medium text-slate-950">{{ $response['from'] ?? ($response['agent_name'] ?? '-') }}</td>
+                                                <td class="px-4 py-3">{{ $response['to'] ?? ($response['target_agent'] ?? '-') }}</td>
+                                                <td class="px-4 py-3">{{ strtoupper(str_replace('_', ' ', $responseType)) }}</td>
+                                                <td class="px-4 py-3">
+                                                    <span class="inline-flex rounded-full px-2.5 py-1 text-[11px] font-semibold ring-1 {{ $severityClass }}">
+                                                        {{ strtoupper(str_replace('_', ' ', $response['severity'] ?? 'none')) }}
+                                                    </span>
+                                                </td>
+                                                <td class="px-4 py-3 min-w-[260px]">{{ $response['claim'] ?? '-' }}</td>
+                                                <td class="px-4 py-3 min-w-[180px]">{{ $displayValue($response['evidence_refs'] ?? []) }}</td>
+                                                <td class="px-4 py-3 min-w-[240px]">{{ $response['revised_recommendation'] ?? '-' }}</td>
+                                            </tr>
+                                        @endforeach
+                                    </tbody>
+                                </table>
+                            </div>
+                            </div>
+                        </details>
+                    @endif
+
+                    @if (!empty($conflictMatrix))
+                        <div class="mb-5">
+                            <div class="font-semibold text-slate-900 mb-3">Conflict Matrix</div>
+                            <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                                @foreach ($conflictMatrix as $conflict)
+                                    <div class="border border-amber-200 bg-amber-50/60 rounded-2xl p-4">
+                                        <div class="flex items-start justify-between gap-3 mb-3">
+                                            <div>
+                                                <div class="text-xs text-amber-700 mb-1">{{ $conflict['conflict_id'] ?? '-' }}</div>
+                                                <div class="font-bold text-amber-950">{{ $conflict['topic'] ?? '-' }}</div>
+                                            </div>
+                                            <span class="inline-flex rounded-full px-2.5 py-1 text-[11px] font-semibold bg-white text-amber-700 ring-1 ring-amber-200">
+                                                {{ strtoupper(str_replace('_', ' ', $conflict['severity'] ?? 'none')) }}
+                                            </span>
+                                        </div>
+                                        <div class="text-xs text-amber-800 mb-3">
+                                            Agents: {{ $displayValue($conflict['agents_involved'] ?? []) }}
+                                        </div>
+                                        <div class="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
+                                            <div class="bg-white/80 border border-amber-200 rounded-xl p-3"><strong>Initial Position</strong><br>{{ $conflict['initial_position'] ?? '-' }}</div>
+                                            <div class="bg-white/80 border border-amber-200 rounded-xl p-3"><strong>Counter Position</strong><br>{{ $conflict['counter_position'] ?? '-' }}</div>
+                                            <div class="bg-white/80 border border-amber-200 rounded-xl p-3 md:col-span-2"><strong>Resolution Candidate</strong><br>{{ $conflict['resolution_candidate'] ?? '-' }}</div>
+                                        </div>
+                                    </div>
+                                @endforeach
+                            </div>
+                        </div>
+                    @endif
+
+                    <div class="grid grid-cols-1 md:grid-cols-4 gap-3 mb-5">
+                        <div class="bg-slate-50 border border-slate-200 rounded-xl p-4">
+                            <div class="text-xs text-slate-500 mb-1">Total Conflicts</div>
+                            <div class="text-2xl font-bold">{{ $negotiationSummary['total_conflict_count'] ?? count($conflictMatrix) }}</div>
+                        </div>
+                        <div class="bg-slate-50 border border-slate-200 rounded-xl p-4">
+                            <div class="text-xs text-slate-500 mb-1">Material Conflicts</div>
+                            <div class="text-2xl font-bold">{{ $negotiationSummary['material_conflict_count'] ?? 0 }}</div>
+                        </div>
+                        <div class="bg-slate-50 border border-slate-200 rounded-xl p-4">
+                            <div class="text-xs text-slate-500 mb-1">Critical Conflicts</div>
+                            <div class="text-2xl font-bold">{{ $negotiationSummary['critical_conflict_count'] ?? 0 }}</div>
+                        </div>
+                        <div class="bg-slate-50 border border-slate-200 rounded-xl p-4">
+                            <div class="text-xs text-slate-500 mb-1">Revised Recommendations</div>
+                            <div class="text-2xl font-bold">{{ $negotiationSummary['revised_recommendation_count'] ?? 0 }}</div>
+                        </div>
+                    </div>
+
+                    @if (!empty($baselineComparison))
+                        <div>
+                            <div class="font-semibold text-slate-900 mb-3">Baseline Comparison</div>
+                            <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                                <div class="border border-slate-200 rounded-2xl p-4 bg-slate-50">
+                                    <div class="font-bold text-slate-950 mb-2">Single Agent Baseline</div>
+                                    <div class="space-y-2 text-sm">
+                                        <div><span class="text-slate-500">Recommendation:</span> {{ $singleAgentBaseline['recommendation'] ?? '-' }}</div>
+                                        <div><span class="text-slate-500">Missed conflicts:</span> <strong>{{ $singleAgentBaseline['missed_conflicts'] ?? 0 }}</strong></div>
+                                        <div><span class="text-slate-500">Unsafe recommendation detected:</span> <strong>{{ !empty($singleAgentBaseline['unsafe_recommendation_detected']) ? 'yes' : 'no' }}</strong></div>
+                                        <div><span class="text-slate-500">Evidence coverage:</span> <strong>{{ $singleAgentBaseline['evidence_coverage_score'] ?? '-' }}</strong></div>
+                                        <div><span class="text-slate-500">Caveat coverage:</span> <strong>{{ $singleAgentBaseline['caveat_coverage_score'] ?? '-' }}</strong></div>
+                                    </div>
+                                </div>
+                                <div class="border border-emerald-200 rounded-2xl p-4 bg-emerald-50/60">
+                                    <div class="font-bold text-emerald-950 mb-2">Agent Society</div>
+                                    <div class="space-y-2 text-sm text-emerald-950">
+                                        <div><span class="text-emerald-700">Recommendation:</span> {{ $agentSocietyBaseline['recommendation'] ?? '-' }}</div>
+                                        <div><span class="text-emerald-700">Conflicts detected:</span> <strong>{{ $agentSocietyBaseline['conflicts_detected'] ?? 0 }}</strong></div>
+                                        <div><span class="text-emerald-700">Unsafe recommendation prevented:</span> <strong>{{ !empty($agentSocietyBaseline['unsafe_recommendation_prevented']) ? 'yes' : 'no' }}</strong></div>
+                                        <div><span class="text-emerald-700">Evidence coverage:</span> <strong>{{ $agentSocietyBaseline['evidence_coverage_score'] ?? '-' }}</strong></div>
+                                        <div><span class="text-emerald-700">Caveat coverage:</span> <strong>{{ $agentSocietyBaseline['caveat_coverage_score'] ?? '-' }}</strong></div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    @endif
+                </div>
+            @endif
+        </div>
+
         <div class="bg-white rounded-2xl shadow-sm border border-slate-200 mb-8" x-data="{ openFinalDecision: false }">
             <button type="button" @click="openFinalDecision = !openFinalDecision" class="w-full text-left p-5 hover:bg-slate-50 rounded-2xl transition">
                 <div class="flex items-start justify-between gap-4 mb-4">
@@ -2227,7 +2428,7 @@
                         @endif
                     </div>
                 @else
-                    <p class="text-slate-600">AI Decision Agent belum menghasilkan diagnosis. Cek API key, model, atau raw JSON di bawah.</p>
+                    <p class="text-slate-600">AI Decision Agent has not produced a diagnosis yet. Check the API key, model, or raw JSON below.</p>
                 @endif
             </button>
 
@@ -2312,7 +2513,7 @@
                                 <div class="flex flex-col md:flex-row md:items-start md:justify-between gap-3 mb-4">
                                     <div>
                                         <div class="font-semibold text-cyan-900">Decision Scenario Simulation</div>
-                                        <div class="text-sm text-cyan-900 mt-1">Baseline tanpa intervensi besar dibandingkan dengan skenario jika rekomendasi final dijalankan.</div>
+                                        <div class="text-sm text-cyan-900 mt-1">Baseline without major intervention compared with the scenario if the final recommendation is executed.</div>
                                     </div>
                                     <span class="shrink-0 inline-flex w-fit rounded-full px-3 py-1 text-[11px] font-semibold bg-white text-cyan-700 ring-1 ring-cyan-200">
                                         {{ strtoupper(str_replace('_', ' ', $scenarioIntervention['confidence'] ?? ($decisionScenarioResult['simulation_scope'] ?? 'scenario'))) }}
@@ -2504,12 +2705,12 @@
         const asyncStepSections = [
             {
                 title: 'Data Preparation Sequence',
-                subtitle: 'Load checkpoint dan extract metric berjalan berurutan sebagai sumber data deterministic.',
+                subtitle: 'Load checkpoint and extract metrics run sequentially as the deterministic data source.',
                 keys: ['checkpoint_load', 'metrics_extraction']
             },
             {
                 title: 'Parallel Specialist Fan-Out',
-                subtitle: 'Specialist agents berjalan paralel dan selesai sesuai callback masing-masing agent.',
+                subtitle: 'Specialist agents run in parallel and finish according to each agent callback.',
                 keys: [
                     'activation_agent',
                     'retention_agent',
@@ -2520,8 +2721,13 @@
                 ]
             },
             {
+                title: 'Structured Negotiation',
+                subtitle: 'One evidence-based cross-examination round produces responses and a conflict matrix.',
+                keys: ['structured_negotiation']
+            },
+            {
                 title: 'Final Decision Sequence',
-                subtitle: 'Final Decision Agent menunggu evidence specialist, lalu Scenario Simulator membandingkan baseline vs action sebelum run ditutup.',
+                subtitle: 'Final Decision Agent waits for specialist and negotiation evidence, then Scenario Simulator compares baseline vs action before the run closes.',
                 keys: ['final_decision_agent', 'decision_scenario_simulator', 'done']
             }
         ];
@@ -2662,8 +2868,8 @@
                     const execution = extractStepExecution(step);
                     const realFinishedAt = execution.requestFinishedAt || step.finished_at || '';
                     const timeText = realFinishedAt
-                        ? 'Selesai: ' + realFinishedAt
-                        : (step.started_at ? 'Mulai: ' + step.started_at : '');
+                        ? 'Finished: ' + realFinishedAt
+                        : (step.started_at ? 'Started: ' + step.started_at : '');
                     const summary = step.result_summary ? '<div class="text-xs text-slate-500 mt-2">' + escapeHtml(step.result_summary) + '</div>' : '';
                     const error = step.error ? '<div class="text-xs text-rose-700 mt-2">' + escapeHtml(step.error) + '</div>' : '';
                     const executionTiming = renderStepExecutionTiming(step);

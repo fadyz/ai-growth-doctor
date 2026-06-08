@@ -25,6 +25,7 @@ class AgentOrchestrator
     private $decisionScenarioSimulator;
     private $aiAgentClient;
     private $runProgressStore;
+    private $structuredNegotiationService;
 
     public function __construct(
         ActivationAgent $activationAgent,
@@ -36,7 +37,8 @@ class AgentOrchestrator
         FinalDecisionAgent $finalDecisionAgent,
         DecisionScenarioSimulator $decisionScenarioSimulator,
         AiAgentClient $aiAgentClient,
-        RunProgressStore $runProgressStore
+        RunProgressStore $runProgressStore,
+        StructuredNegotiationService $structuredNegotiationService
     ) {
         $this->activationAgent = $activationAgent;
         $this->retentionAgent = $retentionAgent;
@@ -48,6 +50,7 @@ class AgentOrchestrator
         $this->decisionScenarioSimulator = $decisionScenarioSimulator;
         $this->aiAgentClient = $aiAgentClient;
         $this->runProgressStore = $runProgressStore;
+        $this->structuredNegotiationService = $structuredNegotiationService;
     }
 
     public function run(array $metricsContext, ?string $trackedRunId = null): array
@@ -212,9 +215,54 @@ class AgentOrchestrator
             ]);
         }
 
+        $this->markRunningIfTracked($isTracked, $runId, 'structured_negotiation', 'Structured Negotiation is running one evidence-based cross-examination round.');
+        $structuredNegotiation = $this->structuredNegotiationService->run([
+            'metrics_context' => $metricsContext,
+            'guardrail_result' => $metricsContext['guardrail_policy'] ?? [],
+            'specialist_outputs' => $specialistAgents,
+            'forecast_evaluation' => $forecastEvaluations,
+            'calibration_memory' => $forecastCalibration,
+        ]);
+        $this->markDoneIfTracked($isTracked, $runId, 'structured_negotiation', $structuredNegotiation, 'Structured Negotiation completed.');
+
+        foreach (($structuredNegotiation['agent_responses'] ?? []) as $response) {
+            $this->logInteraction($interactionLog, $runId, $response['agent_name'] ?? 'Specialist Agent', 'Structured Negotiation Service', 'negotiation_' . ($response['response_type'] ?? 'response'), [
+                'target_agent' => $response['target_agent'] ?? null,
+                'severity' => $response['severity'] ?? null,
+                'claim' => $response['claim'] ?? null,
+                'evidence_refs' => $response['evidence_refs'] ?? [],
+                'revised_recommendation' => $response['revised_recommendation'] ?? null,
+            ]);
+        }
+
+        $this->logInteraction($interactionLog, $runId, 'Structured Negotiation Service', 'orchestrator', 'negotiation_output', [
+            'round' => $structuredNegotiation['round'] ?? null,
+            'negotiation_type' => $structuredNegotiation['negotiation_type'] ?? null,
+            'agent_response_count' => count($structuredNegotiation['agent_responses'] ?? []),
+            'total_conflict_count' => $structuredNegotiation['summary']['total_conflict_count'] ?? count($structuredNegotiation['conflicts'] ?? []),
+            'material_conflict_count' => $structuredNegotiation['summary']['material_conflict_count'] ?? 0,
+            'critical_conflict_count' => $structuredNegotiation['summary']['critical_conflict_count'] ?? 0,
+            'material_or_higher_conflict_count' => $structuredNegotiation['summary']['material_or_higher_conflict_count'] ?? 0,
+            'conflict_ids' => array_values(array_map(function (array $conflict) {
+                return $conflict['conflict_id'] ?? null;
+            }, $structuredNegotiation['conflicts'] ?? [])),
+        ]);
+
+        $orchestratorEvidenceAssembly = $this->buildOrchestratorEvidenceAssembly(
+            $metricsContext,
+            $specialistAgents,
+            $structuredNegotiation,
+            $forecastEvaluations,
+            $forecastCalibration
+        );
+
         $finalDecisionContext = [
             'metrics_context' => $metricsContext,
             'specialist_agents' => $specialistAgents,
+            'structured_negotiation' => $structuredNegotiation,
+            'conflict_matrix' => $structuredNegotiation['conflicts'] ?? [],
+            'negotiation_summary' => $structuredNegotiation['summary'] ?? [],
+            'orchestrator_evidence_assembly' => $orchestratorEvidenceAssembly,
             'evaluations' => [
                 'forecast_evaluations' => $forecastEvaluations,
                 'forecast_model_calibration' => $forecastCalibration,
@@ -223,8 +271,8 @@ class AgentOrchestrator
         ];
 
         $this->logInteraction($interactionLog, $runId, 'orchestrator', 'AI Final Decision Agent', 'agent_request', [
-            'shared_context' => ['metrics_context', 'specialist_agents', 'evaluations.forecast_evaluations', 'evaluations.forecast_model_calibration'],
-            'execution_mode' => 'sequential_fan_in_after_parallel_specialists',
+            'shared_context' => ['metrics_context', 'specialist_agents', 'structured_negotiation', 'conflict_matrix', 'evaluations.forecast_evaluations', 'evaluations.forecast_model_calibration'],
+            'execution_mode' => 'sequential_fan_in_after_parallel_specialists_and_single_round_negotiation',
             'context_trace' => $this->buildFinalDecisionContextTrace($finalDecisionContext),
         ]);
         $this->markRunningIfTracked($isTracked, $runId, 'final_decision_agent', 'Final Decision Agent is resolving conflict and producing operating decision.');
@@ -244,6 +292,8 @@ class AgentOrchestrator
             'final_decision' => $aiDecisionAgent,
             'ai_final_decision_agent' => $aiDecisionAgent,
             'specialist_agents' => $specialistAgents,
+            'structured_negotiation' => $structuredNegotiation,
+            'conflict_matrix' => $structuredNegotiation['conflicts'] ?? [],
             'ai_tomorrow_forecast_agent' => $aiTomorrowForecastAgent,
             'ai_ads_agent' => $aiAdsAgent,
             'evaluations' => [
@@ -287,21 +337,36 @@ class AgentOrchestrator
                 'ai_version_agent' => $aiVersionAgent,
                 'ai_ads_agent' => $aiAdsAgent,
                 'ai_tomorrow_forecast_agent' => $aiTomorrowForecastAgent,
+                'structured_negotiation' => [
+                    'agent' => 'Structured Negotiation Service',
+                    'status' => 'active',
+                    'result' => $structuredNegotiation,
+                ],
+                'orchestrator_evidence_assembly' => [
+                    'agent' => 'Orchestrator Evidence Assembly',
+                    'status' => 'active',
+                    'result' => $orchestratorEvidenceAssembly,
+                ],
                 'ai_final_decision_agent' => $aiDecisionAgent,
                 'decision_scenario_simulator' => $decisionScenarioSimulation,
             ],
+            'structured_negotiation' => $structuredNegotiation,
+            'conflict_matrix' => $structuredNegotiation['conflicts'] ?? [],
+            'negotiation_summary' => $structuredNegotiation['summary'] ?? [],
+            'orchestrator_evidence_assembly' => $orchestratorEvidenceAssembly,
             'interaction_log' => $interactionLog,
             'workflow' => [
                 'name' => 'AI Growth Doctor Multi-Agent Workflow',
-                'mode' => 'parallel_specialist_fan_out_then_final_decision_and_scenario_simulation',
+                'mode' => 'parallel_specialist_fan_out_then_single_round_structured_negotiation_then_final_decision',
                 'steps' => [
                     '1. Metric extraction builds shared metrics_context.',
                     '2. Independent specialist agents run as a parallel fan-out evidence layer: activation, retention, monetization, version risk, ads acquisition/campaign lifecycle, and tomorrow forecast interpretation.',
-                    '3. Orchestrator collects specialist outputs, deterministic guardrail policy, forecast evaluation results, and forecast calibration memory into one decision context.',
-                    '4. Final Decision Agent runs sequentially after all specialist evidence is available and resolves consensus/conflicts into one business operating decision.',
-                    '5. Decision Scenario Simulator runs sequentially after the final decision and compares baseline no-major-intervention forecast against the recommended action scenario.',
+                    '3. Single-Round Structured Negotiation lets specialists support, object, warn, request evidence, or revise recommendations using only safe summaries and evidence references.',
+                    '4. Orchestrator assembles metrics, guardrail, specialist summaries, negotiation output, conflict matrix, forecast evaluation, and calibration memory into a decision package.',
+                    '5. Final Decision Agent runs sequentially after the negotiation package and resolves material/critical conflicts into one business operating decision.',
+                    '6. Decision Scenario Simulator runs sequentially after the final decision and compares baseline no-major-intervention forecast against the recommended action scenario.',
                 ],
-                'parallelization_note' => 'Specialist agents are independent and run through AiAgentClient::callMany parallel HTTP pool. Final Decision Agent remains sequential because it depends on the complete specialist evidence bundle. Decision Scenario Simulator also remains sequential because it depends on the final recommended action.',
+                'parallelization_note' => 'Specialist agents are independent and run through AiAgentClient::callMany parallel HTTP pool. Structured Negotiation is a deterministic one-round fan-in layer over specialist summaries only. Final Decision Agent remains sequential because it depends on the complete specialist and negotiation evidence bundle.',
             ],
         ];
     }
@@ -336,6 +401,38 @@ class AgentOrchestrator
     private function makeRunId(): string
     {
         return 'agd_' . date('Ymd_His') . '_' . substr(sha1((string) microtime(true)), 0, 8);
+    }
+
+    private function buildOrchestratorEvidenceAssembly(
+        array $metricsContext,
+        array $specialistAgents,
+        array $structuredNegotiation,
+        array $forecastEvaluations,
+        array $forecastCalibration
+    ): array {
+        $guardrailResult = $metricsContext['guardrail_policy'] ?? [];
+
+        return [
+            'metrics_context' => $metricsContext,
+            'guardrail_result' => $guardrailResult,
+            'specialist_outputs' => $specialistAgents,
+            'structured_negotiation' => $structuredNegotiation,
+            'conflict_matrix' => $structuredNegotiation['conflicts'] ?? [],
+            'negotiation_summary' => $structuredNegotiation['summary'] ?? [],
+            'forecast_evaluation' => $forecastEvaluations,
+            'calibration_memory' => $forecastCalibration,
+            'final_decision_context' => [
+                'must_resolve_conflicts' => true,
+                'final_decision_owner' => 'FinalDecisionAgent',
+                'guardrail_blocked_actions' => $guardrailResult['blocked_actions']
+                    ?? ($guardrailResult['deterministic_decision']['blocked_actions'] ?? []),
+                'total_conflict_count' => $structuredNegotiation['summary']['total_conflict_count'] ?? count($structuredNegotiation['conflicts'] ?? []),
+                'material_conflict_count' => $structuredNegotiation['summary']['material_conflict_count'] ?? 0,
+                'critical_conflict_count' => $structuredNegotiation['summary']['critical_conflict_count'] ?? 0,
+                'material_or_higher_conflict_count' => $structuredNegotiation['summary']['material_or_higher_conflict_count'] ?? 0,
+                'negotiation_rounds' => $structuredNegotiation['round'] ?? 1,
+            ],
+        ];
     }
 
     private function logAgentResponse(array &$interactionLog, string $runId, string $agentName, array $agentOutput): void
@@ -401,6 +498,8 @@ class AgentOrchestrator
         $tomorrowForecastMetrics = $metricsContext['tomorrow_forecast_metrics'] ?? [];
         $specialistAgents = $context['specialist_agents'] ?? [];
         $evaluations = $context['evaluations'] ?? [];
+        $structuredNegotiation = $context['structured_negotiation'] ?? [];
+        $conflictMatrix = $context['conflict_matrix'] ?? [];
 
         return [
             'metrics_keys' => array_keys($metricsContext),
@@ -438,6 +537,17 @@ class AgentOrchestrator
                 'count' => count($specialistAgents),
                 'statuses' => $this->agentStatusMap($specialistAgents),
                 'execution_modes' => $this->agentExecutionModeMap($specialistAgents),
+            ],
+            'structured_negotiation' => [
+                'present' => !empty($structuredNegotiation),
+                'round' => $structuredNegotiation['round'] ?? null,
+                'negotiation_type' => $structuredNegotiation['negotiation_type'] ?? null,
+                'agent_response_count' => count($structuredNegotiation['agent_responses'] ?? []),
+                'conflict_count' => count($conflictMatrix),
+                'total_conflict_count' => $structuredNegotiation['summary']['total_conflict_count'] ?? count($conflictMatrix),
+                'material_conflict_count' => $structuredNegotiation['summary']['material_conflict_count'] ?? null,
+                'critical_conflict_count' => $structuredNegotiation['summary']['critical_conflict_count'] ?? null,
+                'material_or_higher_conflict_count' => $structuredNegotiation['summary']['material_or_higher_conflict_count'] ?? null,
             ],
             'evaluations' => [
                 'has_forecast_evaluations' => !empty($evaluations['forecast_evaluations'] ?? []),

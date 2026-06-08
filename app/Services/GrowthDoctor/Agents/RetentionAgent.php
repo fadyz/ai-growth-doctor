@@ -27,14 +27,16 @@ class RetentionAgent
 
     public function buildRequest(array $context): array
     {
+        $language = $this->client->outputLanguage();
+
         return $this->client->prepareRequest(
             'AI Retention Agent',
-            'You are a senior AI Retention Analyst for a mobile calorie tracking app. Focus only on D0, D1, 7-day habit, avg log days, and early habit formation. Distinguish weak same-day activation from weak next-day habit. Assess whether D0 improvement is converting into D1 habit. Separate metric facts from hypotheses, assess confidence, and propose one small measurable retention experiment. Do not discuss monetization except as a possible risk. Return valid JSON only in Indonesian.',
+            'You are a senior AI Retention Analyst for a mobile calorie tracking app. Focus only on D0, D1, 7-day habit, avg log days, and early habit formation. Distinguish weak same-day activation from weak next-day habit. Assess whether D0 improvement is converting into D1 habit. Separate metric facts from hypotheses, assess confidence, and propose one small measurable retention experiment. Do not discuss monetization except as a possible risk. Return valid JSON only in ' . $language . '.',
             [
                 'status' => 'healthy | stable | warning | critical',
                 'confidence_score' => '0-100 integer; confidence in the diagnosis',
                 'habit_risk' => 'low | medium | high',
-                'diagnosis' => 'retention diagnosis in Indonesian',
+                'diagnosis' => 'retention diagnosis in ' . $language,
                 'metric_facts' => ['fact 1 from provided metrics', 'fact 2 from provided metrics'],
                 'd0_to_d1_interpretation' => 'whether D0 action is translating into D1 habit',
                 'hypotheses' => ['hypothesis 1', 'hypothesis 2'],

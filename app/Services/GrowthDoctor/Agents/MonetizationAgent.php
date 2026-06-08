@@ -27,15 +27,17 @@ class MonetizationAgent
 
     public function buildRequest(array $context): array
     {
+        $language = $this->client->outputLanguage();
+
         return $this->client->prepareRequest(
             'AI Monetization Agent',
-            'You are a senior AI Monetization Analyst for a mobile calorie tracking app. Focus on paywall_view, purchase_start, purchase_success, purchase rate, revenue opportunity, and the risk that monetization appears too early before users experience core value. Separate metric facts from hypotheses. Separate revenue upside from activation risk. Assess confidence and propose one small measurable monetization experiment. Return valid JSON only in Indonesian.',
+            'You are a senior AI Monetization Analyst for a mobile calorie tracking app. Focus on paywall_view, purchase_start, purchase_success, purchase rate, revenue opportunity, and the risk that monetization appears too early before users experience core value. Separate metric facts from hypotheses. Separate revenue upside from activation risk. Assess confidence and propose one small measurable monetization experiment. Return valid JSON only in ' . $language . '.',
             [
                 'status' => 'healthy | active_signal | noisy | warning | risk',
                 'confidence_score' => '0-100 integer; confidence in the diagnosis',
                 'revenue_signal' => 'short monetization signal',
                 'activation_risk' => 'low | medium | high',
-                'diagnosis' => 'monetization diagnosis in Indonesian',
+                'diagnosis' => 'monetization diagnosis in ' . $language,
                 'metric_facts' => ['fact 1 from provided metrics', 'fact 2 from provided metrics'],
                 'opportunities' => ['opportunity 1', 'opportunity 2'],
                 'risks' => ['risk 1', 'risk 2'],

@@ -1,0 +1,101 @@
+services:
+  web:
+    build:
+      context: .
+    ports:
+      - "8080:80"
+    environment:
+      APP_ENV: local
+      APP_DEBUG: "true"
+      APP_URL: http://localhost:8080
+      DB_CONNECTION: mysql
+      DB_HOST: mysql
+      DB_PORT: 3306
+      DB_DATABASE: ai_growth_doctor
+      DB_USERNAME: laravel
+      DB_PASSWORD: secret
+      AI_PROVIDER: ${AI_PROVIDER:-openai}
+      AI_OUTPUT_LANGUAGE: ${AI_OUTPUT_LANGUAGE:-English}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_MODEL: ${OPENAI_MODEL:-gpt-5.4-nano}
+      OPENAI_BASE_URL: ${OPENAI_BASE_URL:-https://api.openai.com/v1}
+      SUMOPOD_API_KEY: ${SUMOPOD_API_KEY:-}
+      SUMOPOD_MODEL: ${SUMOPOD_MODEL:-gpt-5.4-nano}
+      SUMOPOD_BASE_URL: ${SUMOPOD_BASE_URL:-https://ai.sumopod.com}
+      RUN_MIGRATIONS: "true"
+    volumes:
+      - vendor:/var/www/html/vendor
+      - ./storage:/var/www/html/storage
+      - bootstrap_cache:/var/www/html/bootstrap/cache
+    depends_on:
+      mysql:
+        condition: service_healthy
+    restart: unless-stopped
+
+  worker:
+    build:
+      context: .
+    command: php artisan growth-doctor:work --sleep=1
+    environment:
+      APP_ENV: local
+      APP_DEBUG: "true"
+      APP_URL: http://localhost:8080
+      DB_CONNECTION: mysql
+      DB_HOST: mysql
+      DB_PORT: 3306
+      DB_DATABASE: ai_growth_doctor
+      DB_USERNAME: laravel
+      DB_PASSWORD: secret
+      AI_PROVIDER: ${AI_PROVIDER:-openai}
+      AI_OUTPUT_LANGUAGE: ${AI_OUTPUT_LANGUAGE:-English}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_MODEL: ${OPENAI_MODEL:-gpt-5.4-nano}
+      OPENAI_BASE_URL: ${OPENAI_BASE_URL:-https://api.openai.com/v1}
+      SUMOPOD_API_KEY: ${SUMOPOD_API_KEY:-}
+      SUMOPOD_MODEL: ${SUMOPOD_MODEL:-gpt-5.4-nano}
+      SUMOPOD_BASE_URL: ${SUMOPOD_BASE_URL:-https://ai.sumopod.com}
+    volumes:
+      - vendor:/var/www/html/vendor
+      - ./storage:/var/www/html/storage
+      - bootstrap_cache:/var/www/html/bootstrap/cache
+    depends_on:
+      mysql:
+        condition: service_healthy
+      web:
+        condition: service_started
+    restart: unless-stopped
+
+  mysql:
+    image: mysql:8.0
+    ports:
+      - "3307:3306"
+    environment:
+      MYSQL_DATABASE: ai_growth_doctor
+      MYSQL_USER: laravel
+      MYSQL_PASSWORD: secret
+      MYSQL_ROOT_PASSWORD: root
+    volumes:
+      - mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-uroot", "-proot"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
+
+  node:
+    image: node:14-bullseye
+    working_dir: /var/www/html
+    command: sh -c "npm install && npm run watch-poll"
+    volumes:
+      - .:/var/www/html
+      - node_modules:/var/www/html/node_modules
+    profiles:
+      - assets
+
+volumes:
+  mysql_data:
+  vendor:
+  storage:
+  bootstrap_cache:
+  node_modules:
