@@ -1,46 +1,155 @@
 # Architecture
 
-Dokumen ini menjelaskan arsitektur AI Growth Doctor.
+This document describes the current AI Growth Doctor architecture and how it supports the Agent Society workflow.
 
-## Gambaran Umum
+AI Growth Doctor combines deterministic metric computation, specialist AI agents, forecast evaluation, calibration memory, guardrail policy, structured negotiation, final decision synthesis, scenario simulation, and a graph visualizer for auditability.
 
-AI Growth Doctor adalah workflow multi-agent yang menggabungkan deterministic metrics, specialist AI agents, forecast evaluation, calibration memory, guardrail policy, dan final decision synthesis.
+## System Goals
 
-Sistem ini dibuat untuk membantu founder aplikasi mengambil keputusan growth harian dengan lebih konsisten dan auditable.
+- Convert daily growth data into an evidence-backed operating decision.
+- Separate deterministic facts from AI interpretation.
+- Let specialist agents analyze different domains independently.
+- Detect cross-domain conflicts before the final recommendation.
+- Apply deterministic guardrails before aggressive actions can be recommended.
+- Keep humans as the final decision owners.
+- Make every run inspectable through JSON, dashboard cards, interaction logs, and the Agent Society graph.
 
 ## High-Level Flow
 
 ```text
-Raw Data / Checkpoint
-→ Metrics Extractor
-→ Parallel Specialist Agents
-→ Forecast Evaluation
-→ Forecast Calibration
-→ Guardrail Policy Engine
-→ Final Decision Agent
-→ Decision Scenario Simulator
-→ Dashboard / Operator Decision
+Checkpoint Data
+-> Metrics Extraction
+-> Forecast Evaluation
+-> Forecast Calibration Memory
+-> Guardrail / Safe Context
+-> Specialist Agents
+-> Single-Round Structured Negotiation
+-> Orchestrator Evidence Assembly
+-> Final Decision Agent
+-> Decision Scenario Simulator
+-> Dashboard / Graph / Human Operator
 ```
 
-## 1. Data Layer
+The graph visualizer renders the same run as a horizontal Agent Society pipeline:
 
-Data awal masuk dalam bentuk checkpoint atau data harian yang berisi metric seperti:
+```text
+Checkpoint Load
+-> Metrics Extraction
+-> Guardrail & Safe Context
+-> Specialist Agents fan-out
+-> Single-Round Structured Negotiation
+-> Orchestrator Evidence Assembly
+-> Final Decision Agent
+-> Decision Scenario Simulator
+```
 
-- activation daily
-- retention daily
-- monetization signal
+## Runtime Components
+
+### Laravel Backend
+
+Laravel owns routes, controllers, services, run persistence, and Blade page shells.
+
+Key responsibilities:
+
+- Load checkpoint data.
+- Run deterministic services.
+- Call specialist agents.
+- Store async run progress.
+- Persist completed run JSON.
+- Serve dashboard and graph pages.
+- Serve graph JSON derived from existing run files.
+
+### Deterministic Services
+
+Deterministic services compute facts and constraints before AI synthesis.
+
+Examples:
+
+- `MetricsExtractor`
+- `ForecastEvaluationService`
+- `ForecastCalibrationService`
+- `GuardrailPolicyEngine`
+- `StructuredNegotiationService`
+- `RunProgressStore`
+
+These services should be reproducible for the same input data.
+
+### AI Agent Layer
+
+Specialist agents are invoked through the agent orchestration layer. They read a compact context and return structured outputs.
+
+Specialists:
+
+- Activation Agent
+- Retention Agent
+- Monetization Agent
+- Version Agent
+- Ads Agent
+- Tomorrow Forecast Agent
+
+Final synthesis:
+
+- Final Decision Agent
+- Decision Scenario Simulator
+
+### React Graph Island
+
+The graph visualizer is a React island mounted into a Blade page. It does not turn the Laravel app into a single-page application.
+
+Blade root:
+
+```html
+<div id="agd-graph-root" data-run-id="..." data-graph-url="..."></div>
+```
+
+Frontend stack:
+
+- Vite
+- React
+- React Flow / `@xyflow/react`
+- `html-to-image` for PNG export
+
+Backend graph service:
+
+```text
+app/Services/AiGrowthDoctor/AiGrowthDoctorGraphBuilder.php
+```
+
+Graph routes:
+
+```text
+GET /ai-growth-doctor/runs/{runId}/graph
+GET /ai-growth-doctor/runs/{runId}/graph-view
+```
+
+## Data Layer
+
+Input data starts as checkpoint or daily growth data. It can include:
+
+- activation daily data
+- retention daily data
+- monetization events
 - app version performance
-- ads campaign performance
+- ads campaign reports
 - forecast history
 - evaluation history
+- calibration memory
 
-Data sensitif tidak boleh disimpan dalam repository public.
+Sensitive data should not be committed to a public repository.
 
-## 2. Metrics Extractor
+Completed runs are stored as JSON:
 
-`MetricsExtractor` bertugas menghitung metric utama secara deterministik.
+```text
+storage/app/ai-growth-doctor/runs/{runId}.json
+```
 
-Contoh metric:
+Run JSON is treated as immutable historical evidence. The graph visualizer only reads it.
+
+## Metrics Extraction
+
+`MetricsExtractor` computes the factual metrics used by agents and guardrails.
+
+Examples:
 
 - session users
 - workspace users
@@ -54,86 +163,16 @@ Contoh metric:
 - purchase success users
 - purchase success rate
 - campaign cost per install
-- conversion rate
+- campaign conversion rate
 
-Angka-angka ini dihitung dari data, bukan dibuat oleh AI.
+These numbers are calculated from input data. Agents should not invent them.
 
-## 3. Specialist Agents
+## Forecast Evaluation and Calibration
 
-Specialist agents berjalan secara paralel agar setiap domain dianalisis dari sudut pandang masing-masing.
+`ForecastEvaluationService` compares previous forecasts against actual mature data.
 
-### Activation Agent
+It distinguishes:
 
-Menganalisis funnel dari session sampai food add success.
-
-Fokus:
-- apakah user berhasil masuk ke core action
-- apakah ada gap session ke workspace
-- apakah workspace quality sehat
-
-### Retention Agent
-
-Menganalisis kebiasaan user setelah install atau join.
-
-Fokus:
-- D0 logging
-- D1 return
-- 7-day habit
-- average log days
-
-### Monetization Agent
-
-Menganalisis paywall dan purchase signal.
-
-Fokus:
-- paywall view
-- purchase start
-- purchase success
-- purchase rate
-- risiko monetisasi terlalu dini
-
-### Version Agent
-
-Menganalisis performa antar versi aplikasi.
-
-Fokus:
-- apakah versi terbaru sehat
-- apakah ada regression
-- apakah versi lama masih relevan untuk keputusan rollout
-- apakah sample versi cukup besar
-
-### Ads Agent
-
-Menganalisis campaign dan acquisition lifecycle.
-
-Fokus:
-- campaign health
-- cost per install
-- conversion rate
-- campaign legacy vs reset successor
-- apakah aman scaling atau hanya small test
-
-### Tomorrow Forecast Agent
-
-Membaca forecast deterministic dan memberi interpretasi risiko.
-
-Fokus:
-- prediksi activation
-- prediksi retention
-- prediksi monetization
-- risk flags
-- scaling caution
-
-## 4. Forecast Evaluation
-
-`ForecastEvaluationService` membandingkan forecast sebelumnya dengan actual data yang sudah matang.
-
-Tujuannya:
-- mengetahui forecast hit atau miss
-- membedakan metric mature, pending maturity, pending actual data, dan missing actual
-- menghindari keputusan berbasis forecast yang belum valid
-
-Contoh status metric:
 - `hit`
 - `miss_low`
 - `miss_high`
@@ -142,24 +181,23 @@ Contoh status metric:
 - `missing_actual_metric`
 - `invalid_forecast_metric`
 
-## 5. Forecast Calibration Memory
+`ForecastCalibrationService` uses forecast evaluation results to update trust.
 
-`ForecastCalibrationService` menggunakan hasil evaluasi forecast untuk menghitung tingkat kepercayaan.
+Calibration can decide that forecast output should be:
 
-Contoh output:
-- trust score
-- forecast role
-- hit rate
-- systematic bias
-- directional only vs can strengthen guardrail
+- directional only
+- supporting evidence
+- strong supporting evidence
+- eligible to strengthen a guardrail
 
-Jika forecast belum cukup akurat, sistem menurunkan peran forecast menjadi sinyal pendukung saja.
+Low-trust forecasts must not override mature actual metrics.
 
-## 6. Guardrail Policy Engine
+## Guardrail Policy Engine
 
-`GuardrailPolicyEngine` adalah aturan deterministik yang membatasi keputusan AI.
+`GuardrailPolicyEngine` is a deterministic safety layer.
 
-Contoh guardrail:
+Examples of guardrails:
+
 - data quality guardrail
 - retention guardrail
 - activation guardrail
@@ -168,76 +206,200 @@ Contoh guardrail:
 - monetization guardrail
 - release guardrail
 
-Guardrail mencegah sistem memberi rekomendasi agresif ketika metric kunci belum sehat.
+Guardrails can produce:
 
-Contoh:
-- jangan scale iklan agresif jika retention lemah
-- jangan menjadikan forecast sebagai hard veto jika trust score rendah
-- jangan membiarkan versi lama memblok rollout versi baru jika tidak relevan
+- triggered guardrails
+- winning guardrail
+- blocked actions
+- allowed actions
+- reason codes
+- deterministic business verdict
+- confidence score
 
-## 7. Final Decision Agent
+Example:
 
-Final Decision Agent melakukan fan-in dari semua evidence:
+```json
+{
+  "winning_guardrail": "retention_guardrail",
+  "deterministic_decision": {
+    "business_verdict": "HOLD_AND_OPTIMIZE",
+    "blocked_actions": [
+      "aggressive_ads_scale",
+      "increase_paywall_pressure"
+    ],
+    "allowed_actions": [
+      "prioritize_retention",
+      "small_controlled_test_only"
+    ]
+  }
+}
+```
 
-- specialist agent outputs
-- deterministic metrics
+## Specialist Agents
+
+Specialist agents analyze separate domains:
+
+- Activation Agent checks whether users reach core value.
+- Retention Agent checks D0, D1, habit, and maturity.
+- Monetization Agent checks paywall and purchase quality.
+- Version Agent checks app version risk and release comparability.
+- Ads Agent checks acquisition and campaign lifecycle.
+- Tomorrow Forecast Agent checks forecast risk and trust weighting.
+
+Specialist outputs are evidence, not final decisions.
+
+## Structured Negotiation
+
+`StructuredNegotiationService` creates a single-round cross-examination step between specialist outputs.
+
+It records:
+
+- negotiation rules
+- specialist summaries
+- agent responses
+- negotiation timeline
+- conflicts
+- baseline comparison
+- decision package
+- summary counts
+
+Rules include:
+
+```text
+max_rounds = 1
+raw_chain_of_thought_allowed = false
+evidence_required_for_objection = true
+final_decision_owner = FinalDecisionAgent
+```
+
+The purpose is not endless debate. The purpose is to expose material conflicts and revised recommendations before final synthesis.
+
+## Orchestrator Evidence Assembly
+
+The orchestrator assembles the final evidence package for the Final Decision Agent.
+
+It includes:
+
+- metrics context
 - guardrail policy
+- specialist outputs
+- structured negotiation result
+- conflict matrix
 - forecast evaluation
 - calibration memory
-- ads lifecycle context
-- version risk context
+- interaction log references
 
-Output yang dihasilkan:
+## Final Decision Agent
+
+The Final Decision Agent synthesizes the evidence package.
+
+Output can include:
+
 - business verdict
 - confidence score
 - operating decision
-- diagnosis
-- prioritized actions
-- 24–72 hour action plan
+- today operator summary
+- accepted recommendations
+- rejected recommendations
+- resolved conflicts
+- action plan for 24 to 72 hours
 - risk notes
 - monitoring plan
-- exit condition
+- rationale
 
-Contoh verdict:
+Typical verdicts:
+
 - `CONTINUE_MONITORING`
 - `HOLD_AND_OPTIMIZE`
 - `SMALL_CONTROLLED_TEST`
 - `PAUSE_OR_ROLLBACK`
 - `SCALE_CAUTIOUSLY`
 
-## 8. Decision Scenario Simulator
+The Final Decision Agent may be conservative, but it should not violate deterministic blocked actions.
 
-Decision Scenario Simulator membandingkan baseline forecast dengan skenario rekomendasi.
+## Decision Scenario Simulator
 
-Tujuannya:
-- membantu operator memahami konsekuensi keputusan
-- membedakan doing nothing vs recommended action
-- memberi gambaran metric apa yang harus dipantau
+The Decision Scenario Simulator compares:
 
-## 9. Audit Trail
+- baseline without intervention
+- recommended intervention
+- scenario with intervention
+- baseline vs intervention comparison
 
-Sistem menyimpan interaction log agar keputusan dapat diaudit.
+It is used for human review. It should not claim exact uplift without experiment or holdout evidence.
 
-Log dapat mencakup:
-- agent request
-- agent response
-- execution mode
-- request duration
-- cache hit
-- result summary
-- guardrail decision
-- final decision context trace
+## Graph Builder
 
-## 10. Human-in-the-loop
+`AiGrowthDoctorGraphBuilder` converts existing run JSON into React Flow nodes and edges.
 
-AI Growth Doctor tidak mengambil keputusan otomatis. Sistem memberi rekomendasi, alasan, dan batas aman, tetapi keputusan akhir tetap pada manusia.
+It builds:
 
-## Prinsip Penting
+- graph metadata
+- nodes
+- edges
+- detail payloads
+- summary cards
 
-- Deterministic metrics first
-- AI reasoning second
-- Guardrail before action
-- Forecast must be evaluated
-- Low-trust forecast cannot become hard veto
-- Missing data should not produce confident diagnosis
-- Human remains final decision maker
+It does not:
+
+- modify run JSON
+- re-run agents
+- change negotiation logic
+- expose raw chain-of-thought
+
+## Auditability
+
+Each run can be inspected through:
+
+- dashboard cards
+- raw run JSON
+- interaction log
+- structured negotiation timeline
+- conflict matrix
+- graph visualizer
+- exported PNG
+
+This makes it possible to answer:
+
+- Which agent produced which signal?
+- Which guardrail was triggered?
+- Which actions were blocked?
+- Which conflicts were detected?
+- Why did the final verdict choose a conservative or aggressive action?
+
+## Docker Architecture
+
+Docker services:
+
+- `web`: Laravel + Apache
+- `worker`: async AI Growth Doctor worker
+- `mysql`: database
+- `node`: optional asset watcher profile
+
+The `web` service copies application source into the image. It does not live-mount the full project source. Rebuild the image after changing PHP, Blade, JS, CSS, or built assets:
+
+```bash
+docker compose up -d --build web
+```
+
+Clear Laravel caches inside Docker when needed:
+
+```bash
+docker compose exec web php artisan view:clear
+docker compose exec web php artisan route:clear
+docker compose exec web php artisan cache:clear
+docker compose exec web php artisan config:clear
+```
+
+## Architecture Principles
+
+- Deterministic metrics first.
+- AI reasoning second.
+- Specialist outputs are isolated before synthesis.
+- Guardrails define safe operating boundaries.
+- Forecast must be evaluated and calibrated.
+- Low-trust forecast cannot become a hard veto.
+- Missing data must not produce confident diagnosis.
+- Raw chain-of-thought is not displayed.
+- Historical run JSON remains immutable.
+- Human operator remains the final decision maker.

@@ -2,9 +2,14 @@
 
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\AiGrowthDoctorController;
+use App\Http\Controllers\AiGrowthDoctorGraphController;
 
 Route::get('/', function () {
     return redirect('/ai-growth-doctor');
 });
 
 Route::get('/ai-growth-doctor', [AiGrowthDoctorController::class, 'dashboard']);
+Route::get('/ai-growth-doctor/runs/{runId}/graph-view', [AiGrowthDoctorGraphController::class, 'show'])
+    ->name('ai-growth-doctor.runs.graph-view');
+Route::get('/ai-growth-doctor/runs/{runId}/graph', [AiGrowthDoctorGraphController::class, 'graph'])
+    ->name('ai-growth-doctor.runs.graph');

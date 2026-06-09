@@ -345,6 +345,8 @@
 
             return (string) $value;
         };
+
+        $dashboardRunId = $analysis['meta']['run_id'] ?? null;
     @endphp
 
     <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 overflow-x-hidden">
@@ -368,6 +370,16 @@
                 </div>
 
                 <div class="shrink-0 flex flex-col sm:flex-row gap-2">
+                    @if ($dashboardRunId)
+                        <a
+                            href="{{ route('ai-growth-doctor.runs.graph-view', ['runId' => $dashboardRunId]) }}"
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            class="inline-flex items-center justify-center rounded-full bg-indigo-700 text-white px-4 py-2 text-sm font-semibold shadow-sm hover:bg-indigo-800 transition"
+                        >
+                            Open Agent Graph
+                        </a>
+                    @endif
                     <button type="button" id="startAsyncRunButton" class="inline-flex items-center justify-center rounded-full bg-slate-900 text-white px-4 py-2 text-sm font-semibold shadow-sm hover:bg-slate-700 transition">
                         Run Live Agent Progress
                     </button>

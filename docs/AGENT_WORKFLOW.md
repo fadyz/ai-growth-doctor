@@ -1,61 +1,79 @@
 # Agent Workflow
 
-Dokumen ini menjelaskan workflow agent di AI Growth Doctor: peran masing-masing agent, data yang dibaca, output yang dihasilkan, dan bagaimana semua agent disatukan menjadi keputusan operasional harian.
+This document describes the AI Growth Doctor Agent Society workflow: what each component reads, what it produces, and how the system turns specialist evidence into a daily operating decision.
 
-## Ringkasan Workflow
+AI Growth Doctor does not ask one AI agent to answer every growth question at once. It decomposes the problem into deterministic preparation, specialist analysis, structured negotiation, final synthesis, and scenario simulation.
 
-AI Growth Doctor menggunakan pola:
+## Workflow Summary
 
 ```text
-Metrics Extractor
-→ Parallel Specialist Agents
-→ Guardrail Policy Engine
-→ Final Decision Agent
-→ Decision Scenario Simulator
+Checkpoint Data
+-> Metrics Extractor
+-> Forecast Evaluation
+-> Forecast Calibration
+-> Guardrail / Safe Context
+-> Specialist Agents
+   - Activation Agent
+   - Retention Agent
+   - Monetization Agent
+   - Version Agent
+   - Ads Agent
+   - Tomorrow Forecast Agent
+-> Single-Round Structured Negotiation
+-> Orchestrator Evidence Assembly
+-> Final Decision Agent
+-> Decision Scenario Simulator
+-> Human Operator
 ```
 
-Sistem ini tidak meminta satu AI untuk menjawab semua hal sekaligus. Masalah growth dipecah menjadi beberapa domain agar setiap agent bisa fokus pada area yang berbeda.
+## Core Principles
 
-## Prinsip Utama
+### 1. Metrics First, AI Second
 
-1. **Metrics first, AI second**  
-   Angka utama dihitung secara deterministik dari data aktual. Agent tidak boleh mengarang angka.
+Primary metrics are computed deterministically from actual input data. Agents may interpret evidence, but they must not invent numbers.
 
-2. **Specialist agents are isolated by design**  
-   Setiap agent membaca domain berbeda secara terpisah. Tujuannya agar satu sudut pandang, misalnya monetization atau ads, tidak langsung mendominasi diagnosis awal.
+### 2. Specialist Agents Are Isolated
 
-3. **Guardrail before action**  
-   Rekomendasi agent tidak langsung menjadi keputusan. Guardrail policy mengecek apakah tindakan tertentu aman dilakukan.
+Each specialist reads a focused domain. Ads, monetization, retention, activation, version, and forecast each get their own analysis before final synthesis.
 
-4. **Final synthesis, not blind voting**  
-   Final Decision Agent tidak sekadar menghitung suara agent. Ia menyintesis evidence, konflik, guardrail, forecast, dan calibration.
+### 3. Guardrail Before Action
 
-5. **Human-in-the-loop**  
-   Sistem memberi rekomendasi dan alasan, tetapi keputusan akhir tetap berada di tangan manusia.
+Recommendations are checked against deterministic policy. A specialist can suggest an action, but guardrails can block it.
 
----
+### 4. Structured Negotiation Before Final Decision
+
+Specialist outputs pass through a single-round structured negotiation. The system records conflicts, evidence references, and revised recommendations.
+
+### 5. Final Synthesis Is Not Voting
+
+The Final Decision Agent does not count votes. It synthesizes metrics, specialist outputs, guardrails, conflicts, forecast evaluation, and calibration.
+
+### 6. Human-in-the-Loop
+
+The system recommends and explains. The human operator remains the final decision maker.
 
 ## 1. Metrics Extractor
 
-### Tujuan
+### Purpose
 
-Metrics Extractor membangun `metrics_context` sebagai sumber kebenaran angka.
+The Metrics Extractor builds `metrics_context`, the factual source of truth for the run.
 
-### Data yang Dibaca
+### Input
 
-Contoh data yang bisa masuk:
+Possible input includes:
 
-- activation daily
-- retention daily
+- activation daily data
+- retention daily data
 - monetization events
 - app version performance
-- ads campaign report
+- ads campaign reports
 - forecast history
-- evaluation history
+- forecast evaluation history
+- calibration memory
 
-### Output Utama
+### Output
 
-Contoh output:
+Example:
 
 ```json
 {
@@ -76,119 +94,203 @@ Contoh output:
 }
 ```
 
-### Catatan
+### Notes
 
-Metrics Extractor adalah lapisan deterministik. Jika angka salah di sini, agent juga bisa ikut salah. Karena itu, data quality dan maturity check penting.
+This is a deterministic layer. If a metric is missing, immature, or low sample, that condition should be preserved instead of hidden.
 
----
+## 2. Forecast Evaluation
 
-## 2. Activation Agent
+### Purpose
 
-### Tujuan
+Forecast Evaluation compares previous forecasts against actual mature data.
 
-Activation Agent membaca apakah pengguna berhasil mencapai core value aplikasi.
+### Output States
 
-Untuk aplikasi Hitung Kalori, core action utamanya adalah berhasil mencatat makanan atau `food_add_success`.
+Possible metric states:
 
-### Input
+- `hit`
+- `miss_low`
+- `miss_high`
+- `pending_maturity`
+- `pending_actual_data`
+- `missing_actual_metric`
+- `invalid_forecast_metric`
 
-Activation Agent membaca:
+### Why It Matters
+
+Forecasts should not influence the final decision as if they are facts unless they have enough maturity and calibration support.
+
+## 3. Forecast Calibration
+
+### Purpose
+
+Forecast Calibration updates the trust level of the forecasting system.
+
+### Output
+
+Examples:
+
+- trust score
+- trust interpretation
+- forecast role
+- weak metrics to treat carefully
+- group accuracy snapshot
+
+### Decision Rule
+
+If forecast trust is low, the forecast should be treated as a directional signal, not as a deterministic decision owner.
+
+## 4. Guardrail / Safe Context
+
+### Purpose
+
+Guardrail / Safe Context defines the deterministic operating boundaries for the Agent Society.
+
+### Guardrails
+
+Examples:
+
+- data quality guardrail
+- retention guardrail
+- activation guardrail
+- forecast guardrail
+- ads acquisition guardrail
+- monetization guardrail
+- release guardrail
+
+### Output
+
+Example:
+
+```json
+{
+  "winning_guardrail": "retention_guardrail",
+  "triggered_guardrails": {
+    "retention_guardrail": {
+      "triggered": true,
+      "severity": "high",
+      "blocked_actions": [
+        "aggressive_ads_scale",
+        "increase_paywall_pressure"
+      ],
+      "allowed_actions": [
+        "prioritize_retention",
+        "small_controlled_test_only"
+      ]
+    }
+  },
+  "deterministic_decision": {
+    "business_verdict": "HOLD_AND_OPTIMIZE"
+  }
+}
+```
+
+### Principle
+
+Guardrails do not replace the final decision. They define what the final decision must respect.
+
+## 5. Activation Agent
+
+### Purpose
+
+Activation Agent checks whether users reach the core value action.
+
+For the calorie tracking app, the key core action is successful food logging, represented by `food_add_success`.
+
+### Reads
 
 - `session_users`
 - `workspace_users`
 - `food_add_success_users`
 - `food_add_success_rate_from_session`
 - `food_add_success_rate_from_workspace`
-- version context jika relevan
+- version context if relevant
+- guardrail context
 
-### Pertanyaan yang Dijawab
+### Questions Answered
 
-- Apakah user berhasil masuk ke workspace?
-- Apakah user yang sudah masuk workspace berhasil add food?
-- Apakah bottleneck ada sebelum workspace atau di dalam add-food flow?
-- Apakah activation cukup sehat untuk menerima lebih banyak acquisition?
+- Are users reaching the workspace?
+- Are workspace users successfully adding food?
+- Is the bottleneck before workspace or inside the food-add flow?
+- Is activation healthy enough to support more acquisition?
 
 ### Output
 
-Contoh output:
+Example:
 
 ```json
 {
   "status": "warning",
-  "summary": "Workspace quality sehat, tetapi session ke food_add_success masih sedang. Bottleneck kemungkinan ada sebelum atau saat entry ke workspace."
+  "confidence_score": 72,
+  "diagnosis": "Activation is stable, but the largest drop is between workspace entry and successful food add.",
+  "recommended_actions": [
+    "Audit the food-add funnel.",
+    "Verify success-event instrumentation."
+  ]
 }
 ```
 
-### Batasan
+### Boundary
 
-Activation Agent sebaiknya tidak menjadikan monetization sebagai diagnosis utama. Paywall boleh disebut sebagai downstream context, tetapi fokus agent ini tetap activation funnel.
+Activation Agent may mention paywall or retention as context, but its primary diagnosis should stay focused on activation.
 
----
+## 6. Retention Agent
 
-## 3. Retention Agent
+### Purpose
 
-### Tujuan
+Retention Agent checks whether users return and begin forming a habit.
 
-Retention Agent membaca apakah pengguna kembali dan mulai membentuk kebiasaan.
-
-### Input
-
-Retention Agent membaca:
+### Reads
 
 - `d0_logged_rate`
 - `d1_logged_rate`
 - `habit_7d_rate`
 - `avg_log_days_7d`
-- maturity info
+- metric maturity
 - cohort windows
+- guardrail context
 
-### Pertanyaan yang Dijawab
+### Questions Answered
 
-- Apakah pengguna yang aktif di D0 kembali di D1?
-- Apakah habit 7 hari mulai terbentuk?
-- Apakah retention cukup sehat untuk mendukung scaling?
-- Apakah retention data sudah mature?
+- Do D0 active users return on D1?
+- Is 7-day habit formation improving?
+- Are retention metrics mature enough to read?
+- Is retention strong enough to support acquisition scaling?
 
 ### Output
 
-Contoh output:
+Example:
 
 ```json
 {
   "status": "warning",
-  "summary": "D0 cukup aktif, tetapi D1 dan habit 7D masih lemah. Scaling acquisition agresif berisiko menghasilkan user yang tidak kembali."
+  "habit_risk": "high",
+  "diagnosis": "D0 activity is not converting into a stable D1 habit.",
+  "recommended_actions": [
+    "Launch a D1 quick-log nudge.",
+    "Track D0-to-D1 cohort movement."
+  ]
 }
 ```
 
-### Catatan Maturity
+### Maturity Notes
 
-Retention metric tidak selalu bisa dibaca pada hari yang sama.
-
-Contoh:
+Retention metrics may not be readable immediately.
 
 ```text
-D1 logged rate membutuhkan H+1
-Habit 7D membutuhkan H+6 atau H+7
+D1 logged rate requires next-day actual data.
+Habit 7D requires a mature 7-day cohort window.
 ```
 
-Karena itu, sistem harus membedakan:
+The system should distinguish mature data from pending maturity.
 
-- mature metric
-- pending maturity
-- pending actual data
-- missing actual metric
+## 7. Monetization Agent
 
----
+### Purpose
 
-## 4. Monetization Agent
+Monetization Agent checks whether paywall and purchase signals are healthy.
 
-### Tujuan
-
-Monetization Agent membaca apakah paywall dan purchase signal sehat.
-
-### Input
-
-Monetization Agent membaca:
+### Reads
 
 - `paywall_view_users`
 - `purchase_start_users`
@@ -196,87 +298,81 @@ Monetization Agent membaca:
 - `paywall_rate_from_food_add_success`
 - `purchase_success_rate_from_paywall`
 - activation context
+- retention context
+- guardrail context
 
-### Pertanyaan yang Dijawab
+### Questions Answered
 
-- Apakah paywall muncul terlalu dini?
-- Apakah user sudah cukup merasakan value sebelum paywall?
-- Apakah purchase signal cukup kuat atau masih low sample?
-- Apakah monetization boleh dioptimasi atau harus ditahan?
+- Is the paywall shown too early?
+- Have users experienced enough core value before monetization pressure?
+- Is purchase volume meaningful or low sample?
+- Should monetization be optimized, held, or segmented?
 
 ### Output
 
-Contoh output:
+Example:
 
 ```json
 {
   "status": "active_signal",
-  "summary": "Monetisasi sudah menghasilkan purchase, tetapi sample masih kecil. Optimasi paywall boleh dilakukan hati-hati, jangan sampai merusak activation."
+  "confidence_score": 72,
+  "diagnosis": "Purchases exist, but purchase volume is small and paywall conversion remains noisy.",
+  "blocked_action_awareness": [
+    "increase_paywall_pressure"
+  ]
 }
 ```
 
-### Catatan
+### Boundary
 
-Monetization Agent harus membaca sample size. Purchase kecil tidak boleh menjadi dasar overconfidence.
+Small purchase counts must not create overconfidence. Monetization pressure should not override activation or retention guardrails.
 
----
+## 8. Version Agent
 
-## 5. Version Agent
+### Purpose
 
-### Tujuan
+Version Agent checks app version quality and release comparability.
 
-Version Agent membaca performa antar versi aplikasi.
+### Reads
 
-### Input
-
-Version Agent membaca:
-
-- `version_metrics`
+- version metrics
 - top versions
 - release candidate versions
 - activation by version
 - monetization by version
+- sample size
+- instrumentation compatibility
 
-### Pertanyaan yang Dijawab
+### Questions Answered
 
-- Apakah versi terbaru menunjukkan regression?
-- Apakah versi lama masih relevan untuk keputusan rollout?
-- Apakah sample versi cukup besar?
-- Apakah rollout aman dilanjutkan?
+- Does the current version show regression?
+- Is a new version healthy enough to continue rollout?
+- Are old versions still comparable?
+- Is the sample size large enough to trust?
 
 ### Output
 
-Contoh output:
+Example:
 
 ```json
 {
   "status": "caution",
-  "summary": "Versi terbaru memiliki sample lebih kecil dan belum cukup kuat untuk dijadikan dasar scaling. Versi lama hanya menjadi konteks, bukan veto rollout."
+  "rollout_decision": "need_more_data",
+  "diagnosis": "The newest version has promising monetization but a smaller sample, so it should not be expanded aggressively yet."
 }
 ```
 
-### Aturan Penting
+### Boundary
 
-Versi lama yang tidak relevan tidak boleh mem-veto rollout modern.
+Legacy versions with incompatible instrumentation should be treated as context only. They should not automatically veto a modern rollout.
 
-Contoh:
+## 9. Ads Agent
 
-```text
-Legacy version with incompatible instrumentation = context only
-Current release line = relevant for release decision
-```
+### Purpose
 
----
+Ads Agent checks acquisition quality and campaign lifecycle.
 
-## 6. Ads Agent
-
-### Tujuan
-
-Ads Agent membaca acquisition dan campaign lifecycle.
-
-### Input
-
-Ads Agent membaca:
+### Reads
 
 - campaign cost
 - clicks
@@ -284,44 +380,44 @@ Ads Agent membaca:
 - conversions
 - cost per install
 - conversion rate
-- recent vs previous performance
+- recent vs previous movement
 - campaign lifecycle context
-- activation and retention context
+- activation context
+- retention context
+- guardrail context
 
-### Pertanyaan yang Dijawab
+### Questions Answered
 
-- Campaign mana yang sehat?
-- Apakah campaign lama sudah degraded?
-- Apakah reset campaign layak diuji?
-- Apakah aman scale budget?
-- Apakah ads signal didukung downstream quality?
+- Which campaign is healthy?
+- Is a legacy campaign degraded?
+- Is a reset successor campaign worth a controlled test?
+- Is it safe to scale budget?
+- Does downstream product quality support acquisition growth?
 
 ### Output
 
-Contoh output:
+Example:
 
 ```json
 {
-  "status": "active",
-  "summary": "Campaign reset lebih sehat daripada legacy campaign, tetapi tetap harus small controlled test karena retention belum cukup kuat."
+  "ads_verdict": "evaluate_reset_successor",
+  "campaign_health": "mixed",
+  "confidence_score": 62,
+  "impact_on_final_decision": "Keep acquisition constrained to a small controlled test."
 }
 ```
 
-### Catatan
+### Boundary
 
-Ads Agent tidak boleh hanya membaca CPI atau conversion rate. Ia harus membaca downstream context seperti activation dan retention.
+Ads Agent must not judge acquisition only from CPI or conversion rate. Downstream activation and retention quality must constrain its recommendation.
 
----
+## 10. Tomorrow Forecast Agent
 
-## 7. Tomorrow Forecast Agent
+### Purpose
 
-### Tujuan
+Tomorrow Forecast Agent interprets deterministic forecast output as a risk signal.
 
-Tomorrow Forecast Agent membaca forecast deterministic dan menerjemahkannya menjadi risk signal.
-
-### Input
-
-Tomorrow Forecast Agent membaca:
+### Reads
 
 - `tomorrow_forecast_metrics`
 - predicted activation
@@ -329,96 +425,120 @@ Tomorrow Forecast Agent membaca:
 - predicted monetization
 - risk flags
 - forecast calibration context
+- guardrail context
 
-### Pertanyaan yang Dijawab
+### Questions Answered
 
-- Apa risiko besok?
-- Apakah activation diprediksi aman?
-- Apakah retention/habit berisiko?
-- Apakah forecast cukup dipercaya?
-- Apakah forecast boleh memperkuat guardrail?
+- What risks are expected tomorrow?
+- Is activation forecast stable?
+- Is retention or habit at risk?
+- Is the forecast trusted enough to influence action?
+- Should forecast strengthen a guardrail or remain directional?
 
 ### Output
 
-Contoh output:
+Example:
 
 ```json
 {
-  "status": "watch",
-  "summary": "Forecast menunjukkan activation relatif aman, tetapi retention dan habit perlu diawasi. Forecast hanya menjadi directional signal jika trust score masih rendah."
+  "prediction_status": "watch",
+  "confidence_score": 62,
+  "summary": "Forecast is directionally mixed. Retention and habit should be watched, but low calibration means forecast should not override mature actual metrics."
 }
 ```
 
-### Catatan
+### Boundary
 
-Forecast tidak boleh langsung menjadi hard veto jika:
+Forecast cannot become a hard veto when:
 
 ```text
 forecast_role = directional_signal_only
-trust_score < threshold
+trust_score is low
 ```
 
----
+## 11. Single-Round Structured Negotiation
 
-## 8. Guardrail Policy Engine
+### Purpose
 
-### Tujuan
+Structured Negotiation creates a deterministic cross-examination step after specialist outputs.
 
-Guardrail Policy Engine adalah lapisan deterministic policy yang membatasi tindakan AI.
+It is designed to answer:
 
-### Contoh Guardrail
+- Did any specialist recommendation conflict with another domain?
+- Did any recommendation violate deterministic guardrails?
+- Did any agent revise its recommendation after seeing cross-domain evidence?
+- What would a single-agent baseline have missed?
 
-- Data Quality Guardrail
-- Activation Guardrail
-- Retention Guardrail
-- Monetization Guardrail
-- Forecast Guardrail
-- Ads Acquisition Guardrail
-- Release Guardrail
+### Rules
 
-### Contoh Keputusan
+```text
+max_rounds = 1
+raw_chain_of_thought_allowed = false
+evidence_required_for_objection = true
+final_decision_owner = FinalDecisionAgent
+```
 
-Jika retention lemah:
+### Output Sections
+
+- rules
+- specialist output summaries
+- agent responses
+- negotiation timeline
+- conflicts
+- baseline comparison
+- decision package
+- summary
+
+### Example Conflict
 
 ```json
 {
-  "blocked_actions": ["increase_budget_aggressively"],
-  "allowed_actions": ["continue_monitoring", "small_controlled_test"]
+  "conflict_id": "conflict_ads_scale_vs_retention",
+  "topic": "Should acquisition budget scale today?",
+  "agents_involved": [
+    "Ads Agent",
+    "Retention Agent",
+    "Activation Agent"
+  ],
+  "severity": "material",
+  "resolution_candidate": "Keep budget stable, test higher-intent creative, and avoid aggressive scaling."
 }
 ```
 
-Jika forecast low trust:
+## 12. Orchestrator Evidence Assembly
 
-```json
-{
-  "forecast_guardrail": {
-    "triggered": false,
-    "reason_codes": [
-      "forecast_directional_only_not_hard_veto"
-    ]
-  }
-}
-```
+### Purpose
 
-### Prinsip
+The orchestrator assembles the evidence package passed to the Final Decision Agent.
 
-Guardrail tidak menggantikan seluruh keputusan bisnis. Ia menjadi batas aman agar AI tidak memberi rekomendasi yang melanggar prinsip founder.
+### Includes
 
----
-
-## 9. Final Decision Agent
-
-### Tujuan
-
-Final Decision Agent menyatukan semua evidence menjadi satu rekomendasi operasional.
-
-### Input
-
-Final Decision Agent menerima:
-
-- compact metrics context
-- specialist agent summaries
+- deterministic metrics
 - guardrail policy
+- specialist outputs
+- structured negotiation result
+- conflict matrix
+- forecast evaluation
+- calibration memory
+- interaction log references
+
+### Principle
+
+The final agent should receive a conflict-aware decision package, not a raw pile of unrelated agent outputs.
+
+## 13. Final Decision Agent
+
+### Purpose
+
+Final Decision Agent turns the evidence package into one operating decision.
+
+### Reads
+
+- metrics context
+- specialist summaries
+- guardrail policy
+- structured negotiation
+- conflict matrix
 - forecast evaluation
 - forecast calibration
 - ads lifecycle context
@@ -426,181 +546,209 @@ Final Decision Agent menerima:
 
 ### Output
 
-Contoh output:
+Example:
 
 ```json
 {
   "business_verdict": "HOLD_AND_OPTIMIZE",
-  "today_operator_summary": "Jangan scaling agresif. Jalankan small controlled test pada reset campaign dan fokus memperbaiki D1 habit.",
-  "prioritized_actions": [
-    "Perbaiki D1 habit nudge",
-    "Evaluasi campaign reset secara kecil",
-    "Pantau activation funnel"
+  "confidence_score": 84,
+  "today_operator_summary": "Do not scale acquisition or increase paywall pressure today. Prioritize retention and run only a small controlled reset-campaign evaluation.",
+  "action_plan_24_72h": [
+    "Launch a D1 quick-log nudge.",
+    "Instrument the first-food-add bottleneck.",
+    "Keep acquisition budget capped."
   ]
 }
 ```
 
-### Yang Harus Ada di Final Decision
+### Must Include
 
-- verdict
+- business verdict
 - confidence score
-- reason
-- operating decision
-- action plan
+- rationale
+- accepted recommendations
+- rejected recommendations
+- resolved conflicts
+- 24 to 72 hour action plan
 - risk notes
 - monitoring plan
-- exit condition
 - weak evidence or uncertainty
 
-### Catatan
+### Boundary
 
-Final Decision boleh lebih konservatif dari deterministic baseline, tetapi tidak boleh melanggar blocked actions dari guardrail.
+Final Decision Agent may be more conservative than a specialist, but it should not violate deterministic blocked actions.
 
----
+## 14. Decision Scenario Simulator
 
-## 10. Decision Scenario Simulator
+### Purpose
 
-### Tujuan
+Decision Scenario Simulator compares doing nothing against the recommended action scenario.
 
-Decision Scenario Simulator membandingkan baseline scenario dengan recommended action scenario.
-
-### Input
+### Reads
 
 - final decision
 - tomorrow forecast metrics
 - guardrail policy
+- structured negotiation
 - specialist summaries
 
-### Pertanyaan yang Dijawab
+### Output Sections
 
-- Apa yang mungkin terjadi jika tidak melakukan intervensi besar?
-- Apa yang diharapkan jika rekomendasi dijalankan?
-- Metric mana yang harus dipantau?
-- Kapan keputusan harus dievaluasi ulang?
+- baseline without intervention
+- recommended intervention
+- scenario with intervention
+- baseline vs intervention comparison
+- evidence basis
+- risk
+- success criteria
+- human review note
 
-### Output
+### Boundary
 
-Contoh output:
+The simulator should support human review. It should not claim exact uplift or revenue impact without experiment evidence.
 
-```json
-{
-  "baseline_scenario": "Continue monitoring without aggressive scale.",
-  "recommended_action_scenario": "Small controlled reset campaign test plus D1 habit optimization.",
-  "monitoring_metrics": [
-    "food_add_success_rate_from_session",
-    "d1_logged_rate",
-    "habit_7d_rate"
-  ]
-}
-```
+## 15. Interaction Log
 
----
+### Purpose
 
-## 11. Interaction Log
+The interaction log makes the run auditable.
 
-### Tujuan
-
-Interaction log membuat sistem bisa diaudit.
-
-### Yang Dicatat
+### Records
 
 - agent request
 - agent response
 - source key
 - execution mode
 - cache hit
-- request started at
-- request finished at
+- request start and finish time
 - duration
 - summary
 - final decision trace
 - guardrail trace
 
-### Manfaat
+### Questions It Answers
 
-Interaction log membantu menjawab:
+- Which agent produced which signal?
+- Did agents run in parallel?
+- Was a result cached?
+- Which guardrail was active?
+- Why did the final decision choose a specific verdict?
 
-- Agent mana yang memberi sinyal apa?
-- Apakah agent berjalan paralel?
-- Apakah hasil dari cache atau real request?
-- Guardrail mana yang aktif?
-- Kenapa final decision memilih verdict tertentu?
+## 16. Graph Visualizer
 
----
+### Purpose
 
-## 12. Data Readiness Mode
+The Agent Society graph visualizer reads completed run JSON and renders the workflow as an interactive React Flow graph.
 
-Jika startup belum punya tracking lengkap, sistem seharusnya tidak memaksakan diagnosis.
+### Shows
 
-Contoh:
+- Metrics Extraction
+- Guardrail & Safe Context
+- Specialist Agents
+- Single-Round Structured Negotiation
+- Orchestrator Evidence Assembly
+- Final Decision Agent
+- Decision Scenario Simulator
+
+### Detail Panel
+
+Clicking nodes shows structured details:
+
+- guardrail details
+- agent evidence and recommendations
+- negotiation rules, timeline, conflict matrix, and baseline comparison
+- final decision and action plan
+- scenario simulator summary
+
+### Routes
 
 ```text
-Jika D1 retention tidak tersedia, sistem tidak boleh menyimpulkan retention sehat atau buruk.
-Jika purchase sample terlalu kecil, monetization harus diberi label low_sample.
-Jika forecast belum pernah dievaluasi, forecast harus dianggap directional only.
+GET /ai-growth-doctor/runs/{runId}/graph
+GET /ai-growth-doctor/runs/{runId}/graph-view
 ```
 
-Output yang benar:
+### Safety
+
+The graph visualizer does not modify historical run JSON. It does not display raw chain-of-thought.
+
+## 17. Data Readiness Mode
+
+If tracking is incomplete, the system should not force a confident diagnosis.
+
+Examples:
+
+```text
+If D1 retention is unavailable, the system must not claim retention is healthy.
+If purchase sample is tiny, monetization must be labeled low-sample or noisy.
+If forecast has not been evaluated, forecast must be directional only.
+```
+
+Correct behavior:
 
 ```json
 {
   "data_readiness": "insufficient",
-  "missing_metrics": ["d1_logged_rate", "purchase_success_users"],
-  "blocked_actions": ["scale_budget_aggressively"],
+  "missing_metrics": [
+    "d1_logged_rate",
+    "purchase_success_users"
+  ],
+  "blocked_actions": [
+    "scale_budget_aggressively"
+  ],
   "recommended_next_step": "Install missing tracking before making aggressive growth decisions."
 }
 ```
 
----
+## 18. End-to-End Example
 
-## 13. End-to-End Example
-
-Contoh workflow harian:
+Example daily run:
 
 ```text
-1. MetricsExtractor membaca checkpoint data.
-2. Activation Agent melihat session → food_add_success masih sedang.
-3. Retention Agent melihat D1 dan habit 7D masih lemah.
-4. Monetization Agent melihat purchase ada, tetapi sample kecil.
-5. Ads Agent melihat reset campaign membaik.
-6. Forecast Agent melihat retention besok berisiko.
-7. Guardrail memblok scaling agresif.
-8. Final Decision memilih HOLD_AND_OPTIMIZE.
-9. Scenario Simulator menyarankan small controlled test dan monitoring 24–72 jam.
+1. Metrics Extractor reads checkpoint data.
+2. Forecast Evaluation checks prior forecast accuracy.
+3. Forecast Calibration marks forecast as low-trust directional evidence.
+4. Guardrail Policy triggers retention_guardrail.
+5. Activation Agent finds first-food-add friction.
+6. Retention Agent finds weak D0-to-D1 habit continuity.
+7. Monetization Agent finds purchase signal but low sample.
+8. Version Agent marks newest version as promising but noisy.
+9. Ads Agent sees reset campaign potential but warns against scaling.
+10. Tomorrow Forecast Agent warns that retention and habit remain at risk.
+11. Structured Negotiation detects ads scaling vs retention conflict.
+12. Orchestrator builds the conflict-aware decision package.
+13. Final Decision Agent chooses HOLD_AND_OPTIMIZE.
+14. Scenario Simulator compares baseline vs retention-first action plan.
+15. Human operator reviews dashboard, graph, and action plan.
 ```
 
-Contoh final verdict:
+Example verdict:
 
 ```text
 HOLD_AND_OPTIMIZE
-Jangan scale agresif dulu. Jalankan uji kecil reset campaign, perbaiki D1 habit, dan pantau activation serta retention sebelum menaikkan budget.
+Do not scale acquisition or increase paywall pressure today. Prioritize retention, fix the activation bottleneck, and run only a small controlled reset-campaign evaluation.
 ```
 
----
+## 19. Why Agent Society?
 
-## 14. Why Multi-Agent?
+Growth decisions are cross-domain.
 
-AI Growth Doctor menggunakan multi-agent karena masalah growth tidak satu dimensi.
+Ads can look efficient while retention is weak. Monetization can show a signal while activation quality is fragile. A new version can improve purchase conversion while sample size is too small. A forecast can warn of risk while calibration says it is low-trust.
 
-Ads bisa terlihat bagus, tetapi retention buruk. Monetization bisa naik, tetapi activation terganggu. Versi baru bisa menaikkan purchase, tetapi menurunkan food add success.
+The Agent Society pattern gives each domain a focused voice, then uses structured negotiation and deterministic guardrails to prevent one incomplete perspective from dominating the final decision.
 
-Dengan agent spesialis, setiap domain mendapat ruang analisis sendiri sebelum disatukan menjadi keputusan final.
+## 20. Summary
 
----
-
-## 15. Summary
-
-AI Growth Doctor workflow terdiri dari:
+AI Growth Doctor workflow is:
 
 ```text
 Deterministic metrics
-→ Specialist agents
-→ Guardrail policy
-→ Forecast evaluation
-→ Calibration memory
-→ Final decision
-→ Scenario simulation
-→ Human operator
+-> Guardrail / Safe Context
+-> Specialist Agent Society
+-> Structured Negotiation
+-> Evidence Assembly
+-> Final Decision
+-> Scenario Simulation
+-> Human Operator
 ```
 
-Sistem ini dirancang untuk membuat keputusan growth lebih cepat, lebih konsisten, dan lebih bisa diaudit tanpa mengambil alih peran manusia.
+The system is built to make daily growth decisions faster, more consistent, safer, and easier to audit without removing human judgment.
