@@ -39,6 +39,10 @@ export default function GraphDetailPanel({ graph, selectedNode }) {
     return <GuardrailDetails node={selectedNode} guardrail={graph.details?.guardrail_context || {}} />;
   }
 
+  if (selectedNode.id === 'app_data_mapping') {
+    return <AppDataMappingDetails node={selectedNode} mapping={graph.details?.app_data_mapping || {}} />;
+  }
+
   const detail = readPath(graph.details || {}, selectedNode.data?.detailKey) || {};
   return (
     <aside className="agd-detail-panel">
@@ -66,6 +70,72 @@ function RunSummary({ graph }) {
       </dl>
       <Section title="Interaction Log">
         <EvidenceList items={graph.details?.interaction_log} />
+      </Section>
+    </aside>
+  );
+}
+
+function AppDataMappingDetails({ node, mapping }) {
+  const appProfile = mapping.app_profile || {};
+  const validation = mapping.mapping_validation || {};
+
+  return (
+    <aside className="agd-detail-panel">
+      <PanelTitle node={node} />
+      <div className="agd-badge-row">
+        <Badge tone="neutral">{appProfile.app_category || 'category unknown'}</Badge>
+        <Badge tone={validation.status === 'valid' ? 'success' : validation.status === 'invalid' ? 'danger' : 'warning'}>{validation.status || 'unknown'}</Badge>
+        <Badge tone="neutral">{validation.mapped_metric_count ?? 0} mapped</Badge>
+      </div>
+
+      <Section title="App Profile">
+        <dl className="agd-detail-dl">
+          <dt>App</dt>
+          <dd>{appProfile.app_name || 'No data available'}</dd>
+          <dt>Core action</dt>
+          <dd>{appProfile.core_action_name || 'No data available'}</dd>
+          <dt>Source label</dt>
+          <dd>{appProfile.core_action_success_label || 'No data available'}</dd>
+          <dt>Workspace</dt>
+          <dd>{appProfile.workspace_name || 'No data available'}</dd>
+          <dt>Monetization</dt>
+          <dd>{appProfile.monetization_model || 'No data available'}</dd>
+          <dt>Data mode</dt>
+          <dd>{appProfile.data_mode || 'No data available'}</dd>
+        </dl>
+      </Section>
+
+      <Section title="Mapping Validation">
+        <dl className="agd-detail-dl">
+          <dt>Status</dt>
+          <dd>{validation.status || 'No data available'}</dd>
+          <dt>Mapped metrics</dt>
+          <dd>{validation.mapped_metric_count ?? 'No data available'}</dd>
+          <dt>Required metrics</dt>
+          <dd>{validation.required_metric_count ?? 'No data available'}</dd>
+          <dt>Missing required</dt>
+          <dd>{asArray(validation.missing_required_metrics).join(', ') || 'None'}</dd>
+          <dt>Warnings</dt>
+          <dd>{[...asArray(validation.low_sample_warnings), ...asArray(validation.data_quality_warnings)].join(', ') || 'None'}</dd>
+        </dl>
+      </Section>
+
+      <Section title="Generic Metrics Preview">
+        <MetricTree value={mapping.generic_metrics_context} />
+      </Section>
+
+      <Section title="Metric Mapping">
+        <details>
+          <summary>Show mapping table</summary>
+          <MappingTable mapping={mapping.metric_mapping} />
+        </details>
+      </Section>
+
+      <Section title="Source Metric References">
+        <details>
+          <summary>Show source refs</summary>
+          <MappingTable mapping={mapping.source_metric_refs} />
+        </details>
       </Section>
     </aside>
   );
@@ -383,6 +453,44 @@ function MetricList({ items }) {
           <strong>{key}</strong>
           <span>{stringifyValue(value)}</span>
         </div>
+      ))}
+    </div>
+  );
+}
+
+function MetricTree({ value }) {
+  const groups = Object.entries(value || {});
+
+  if (!groups.length) {
+    return <p className="agd-empty">No data available</p>;
+  }
+
+  return (
+    <div className="agd-evidence-list">
+      {groups.map(([group, metrics]) => (
+        <div className="agd-evidence-item" key={group}>
+          <strong>{group}</strong>
+          <span>{stringifyValue(metrics)}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function MappingTable({ mapping }) {
+  const rows = Object.entries(mapping || {});
+
+  if (!rows.length) {
+    return <p className="agd-empty">No data available</p>;
+  }
+
+  return (
+    <div className="agd-mapping-table">
+      {rows.map(([key, value]) => (
+        <React.Fragment key={key}>
+          <div>{key}</div>
+          <div>{stringifyValue(value)}</div>
+        </React.Fragment>
       ))}
     </div>
   );

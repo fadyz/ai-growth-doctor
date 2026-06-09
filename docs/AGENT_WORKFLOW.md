@@ -9,6 +9,7 @@ AI Growth Doctor does not ask one AI agent to answer every growth question at on
 ```text
 Checkpoint Data
 -> Metrics Extractor
+-> App Data Mapping
 -> Forecast Evaluation
 -> Forecast Calibration
 -> Guardrail / Safe Context
@@ -98,7 +99,32 @@ Example:
 
 This is a deterministic layer. If a metric is missing, immature, or low sample, that condition should be preserved instead of hidden.
 
-## 2. Forecast Evaluation
+## 2. App Data Mapping
+
+### Purpose
+
+App Data Mapping converts app-specific source metrics into the Generic Growth Metric Contract before guardrails and agents read the run.
+
+### Produces
+
+- `app_profile`
+- `metric_mapping`
+- `generic_metrics_context`
+- `mapping_validation`
+- `source_metric_refs`
+
+### Example
+
+```text
+activation_metrics.metrics_7d.food_add_success_users
+-> activation.core_action_success_users
+```
+
+### Principle
+
+Agents should use `generic_metrics_context` as the primary growth metric layer and `source_metric_refs` for app-specific translation.
+
+## 3. Forecast Evaluation
 
 ### Purpose
 
@@ -120,7 +146,7 @@ Possible metric states:
 
 Forecasts should not influence the final decision as if they are facts unless they have enough maturity and calibration support.
 
-## 3. Forecast Calibration
+## 4. Forecast Calibration
 
 ### Purpose
 
@@ -140,7 +166,7 @@ Examples:
 
 If forecast trust is low, the forecast should be treated as a directional signal, not as a deterministic decision owner.
 
-## 4. Guardrail / Safe Context
+## 5. Guardrail / Safe Context
 
 ### Purpose
 
@@ -189,7 +215,7 @@ Example:
 
 Guardrails do not replace the final decision. They define what the final decision must respect.
 
-## 5. Activation Agent
+## 6. Activation Agent
 
 ### Purpose
 
@@ -234,7 +260,7 @@ Example:
 
 Activation Agent may mention paywall or retention as context, but its primary diagnosis should stay focused on activation.
 
-## 6. Retention Agent
+## 7. Retention Agent
 
 ### Purpose
 
@@ -284,7 +310,7 @@ Habit 7D requires a mature 7-day cohort window.
 
 The system should distinguish mature data from pending maturity.
 
-## 7. Monetization Agent
+## 8. Monetization Agent
 
 ### Purpose
 
@@ -327,7 +353,7 @@ Example:
 
 Small purchase counts must not create overconfidence. Monetization pressure should not override activation or retention guardrails.
 
-## 8. Version Agent
+## 9. Version Agent
 
 ### Purpose
 
@@ -366,7 +392,7 @@ Example:
 
 Legacy versions with incompatible instrumentation should be treated as context only. They should not automatically veto a modern rollout.
 
-## 9. Ads Agent
+## 10. Ads Agent
 
 ### Purpose
 
@@ -411,7 +437,7 @@ Example:
 
 Ads Agent must not judge acquisition only from CPI or conversion rate. Downstream activation and retention quality must constrain its recommendation.
 
-## 10. Tomorrow Forecast Agent
+## 11. Tomorrow Forecast Agent
 
 ### Purpose
 
@@ -456,7 +482,7 @@ forecast_role = directional_signal_only
 trust_score is low
 ```
 
-## 11. Single-Round Structured Negotiation
+## 12. Single-Round Structured Negotiation
 
 ### Purpose
 
@@ -505,7 +531,7 @@ final_decision_owner = FinalDecisionAgent
 }
 ```
 
-## 12. Orchestrator Evidence Assembly
+## 13. Orchestrator Evidence Assembly
 
 ### Purpose
 
@@ -526,7 +552,7 @@ The orchestrator assembles the evidence package passed to the Final Decision Age
 
 The final agent should receive a conflict-aware decision package, not a raw pile of unrelated agent outputs.
 
-## 13. Final Decision Agent
+## 14. Final Decision Agent
 
 ### Purpose
 
@@ -578,7 +604,7 @@ Example:
 
 Final Decision Agent may be more conservative than a specialist, but it should not violate deterministic blocked actions.
 
-## 14. Decision Scenario Simulator
+## 15. Decision Scenario Simulator
 
 ### Purpose
 
@@ -607,7 +633,7 @@ Decision Scenario Simulator compares doing nothing against the recommended actio
 
 The simulator should support human review. It should not claim exact uplift or revenue impact without experiment evidence.
 
-## 15. Interaction Log
+## 16. Interaction Log
 
 ### Purpose
 
@@ -634,7 +660,7 @@ The interaction log makes the run auditable.
 - Which guardrail was active?
 - Why did the final decision choose a specific verdict?
 
-## 16. Graph Visualizer
+## 17. Graph Visualizer
 
 ### Purpose
 
@@ -643,6 +669,7 @@ The Agent Society graph visualizer reads completed run JSON and renders the work
 ### Shows
 
 - Metrics Extraction
+- App Data Mapping
 - Guardrail & Safe Context
 - Specialist Agents
 - Single-Round Structured Negotiation
@@ -671,7 +698,7 @@ GET /ai-growth-doctor/runs/{runId}/graph-view
 
 The graph visualizer does not modify historical run JSON. It does not display raw chain-of-thought.
 
-## 17. Data Readiness Mode
+## 18. Data Readiness Mode
 
 If tracking is incomplete, the system should not force a confident diagnosis.
 
@@ -699,26 +726,27 @@ Correct behavior:
 }
 ```
 
-## 18. End-to-End Example
+## 19. End-to-End Example
 
 Example daily run:
 
 ```text
 1. Metrics Extractor reads checkpoint data.
-2. Forecast Evaluation checks prior forecast accuracy.
-3. Forecast Calibration marks forecast as low-trust directional evidence.
-4. Guardrail Policy triggers retention_guardrail.
-5. Activation Agent finds first-food-add friction.
-6. Retention Agent finds weak D0-to-D1 habit continuity.
-7. Monetization Agent finds purchase signal but low sample.
-8. Version Agent marks newest version as promising but noisy.
-9. Ads Agent sees reset campaign potential but warns against scaling.
-10. Tomorrow Forecast Agent warns that retention and habit remain at risk.
-11. Structured Negotiation detects ads scaling vs retention conflict.
-12. Orchestrator builds the conflict-aware decision package.
-13. Final Decision Agent chooses HOLD_AND_OPTIMIZE.
-14. Scenario Simulator compares baseline vs retention-first action plan.
-15. Human operator reviews dashboard, graph, and action plan.
+2. App Data Mapping maps food_add_success into core_action_success.
+3. Forecast Evaluation checks prior forecast accuracy.
+4. Forecast Calibration marks forecast as low-trust directional evidence.
+5. Guardrail Policy triggers retention_guardrail.
+6. Activation Agent finds first-food-add friction.
+7. Retention Agent finds weak D0-to-D1 habit continuity.
+8. Monetization Agent finds purchase signal but low sample.
+9. Version Agent marks newest version as promising but noisy.
+10. Ads Agent sees reset campaign potential but warns against scaling.
+11. Tomorrow Forecast Agent warns that retention and habit remain at risk.
+12. Structured Negotiation detects ads scaling vs retention conflict.
+13. Orchestrator builds the conflict-aware decision package.
+14. Final Decision Agent chooses HOLD_AND_OPTIMIZE.
+15. Scenario Simulator compares baseline vs retention-first action plan.
+16. Human operator reviews dashboard, graph, and action plan.
 ```
 
 Example verdict:
@@ -728,7 +756,7 @@ HOLD_AND_OPTIMIZE
 Do not scale acquisition or increase paywall pressure today. Prioritize retention, fix the activation bottleneck, and run only a small controlled reset-campaign evaluation.
 ```
 
-## 19. Why Agent Society?
+## 20. Why Agent Society?
 
 Growth decisions are cross-domain.
 
@@ -736,12 +764,13 @@ Ads can look efficient while retention is weak. Monetization can show a signal w
 
 The Agent Society pattern gives each domain a focused voice, then uses structured negotiation and deterministic guardrails to prevent one incomplete perspective from dominating the final decision.
 
-## 20. Summary
+## 21. Summary
 
 AI Growth Doctor workflow is:
 
 ```text
 Deterministic metrics
+-> App Data Mapping
 -> Guardrail / Safe Context
 -> Specialist Agent Society
 -> Structured Negotiation

@@ -10,6 +10,9 @@ use App\Services\GrowthDoctor\ForecastEvaluationService;
 use App\Services\GrowthDoctor\ForecastCalibrationService;
 use App\Services\GrowthDoctor\GuardrailPolicyEngine;
 use App\Services\GrowthDoctor\RunProgressStore;
+use App\Services\AiGrowthDoctor\AppProfileService;
+use App\Services\AiGrowthDoctor\GenericMetricMapperService;
+use App\Services\AiGrowthDoctor\MetricMappingService;
 use Illuminate\Support\Str;
 
 class AiGrowthDoctorController extends Controller
@@ -21,6 +24,9 @@ class AiGrowthDoctorController extends Controller
     private $forecastCalibrationService;
     private $agentOrchestrator;
     private $runProgressStore;
+    private $appProfileService;
+    private $metricMappingService;
+    private $genericMetricMapperService;
 
     public function __construct(
         CheckpointRepository $checkpointRepository,
@@ -29,7 +35,10 @@ class AiGrowthDoctorController extends Controller
         ForecastEvaluationService $forecastEvaluationService,
         ForecastCalibrationService $forecastCalibrationService,
         AgentOrchestrator $agentOrchestrator,
-        RunProgressStore $runProgressStore
+        RunProgressStore $runProgressStore,
+        AppProfileService $appProfileService,
+        MetricMappingService $metricMappingService,
+        GenericMetricMapperService $genericMetricMapperService
     ) {
         $this->checkpointRepository = $checkpointRepository;
         $this->metricsExtractor = $metricsExtractor;
@@ -38,6 +47,9 @@ class AiGrowthDoctorController extends Controller
         $this->forecastCalibrationService = $forecastCalibrationService;
         $this->agentOrchestrator = $agentOrchestrator;
         $this->runProgressStore = $runProgressStore;
+        $this->appProfileService = $appProfileService;
+        $this->metricMappingService = $metricMappingService;
+        $this->genericMetricMapperService = $genericMetricMapperService;
     }
 
     public function dashboard(Request $request)
@@ -144,6 +156,11 @@ class AiGrowthDoctorController extends Controller
                 'rule_based_decision' => [],
                 'guardrail_policy' => [],
             ],
+            'app_profile' => $this->appProfileService->defaultHitungKaloriProfile(),
+            'metric_mapping' => $this->metricMappingService->defaultHitungKaloriMapping(),
+            'generic_metrics_context' => [],
+            'mapping_validation' => [],
+            'source_metric_refs' => [],
             'evaluations' => [
                 'forecast_evaluations' => [
                     'status' => 'empty',
@@ -265,6 +282,17 @@ class AiGrowthDoctorController extends Controller
             'rule_based_decision' => $ruleDecision,
         ];
 
+        $appProfile = $this->appProfileService->resolve($checkpoint);
+        $metricMapping = $this->metricMappingService->resolve($checkpoint, $appProfile);
+        $genericMappingContext = $this->genericMetricMapperService->buildGenericContext($metricsContext, $metricMapping, $appProfile);
+
+        $metricsContext['app_profile'] = $genericMappingContext['app_profile'];
+        $metricsContext['metric_mapping'] = $genericMappingContext['metric_mapping'];
+        $metricsContext['generic_metrics_context'] = $genericMappingContext['generic_metrics_context'];
+        $metricsContext['mapping_validation'] = $genericMappingContext['mapping_validation'];
+        $metricsContext['source_metric_refs'] = $genericMappingContext['source_metric_refs'];
+        $metricsContext['source_metrics_context'] = $genericMappingContext['source_metrics_context'];
+
         $guardrailPolicy = $this->guardrailPolicyEngine->evaluate($metricsContext, [
             'forecast_evaluations' => $forecastEvaluations,
             'forecast_model_calibration' => $forecastCalibration,
@@ -304,6 +332,11 @@ class AiGrowthDoctorController extends Controller
             ],
             'workflow' => $orchestration['workflow'] ?? [],
             'interaction_log' => $orchestration['interaction_log'] ?? [],
+            'app_profile' => $genericMappingContext['app_profile'],
+            'metric_mapping' => $genericMappingContext['metric_mapping'],
+            'generic_metrics_context' => $genericMappingContext['generic_metrics_context'],
+            'mapping_validation' => $genericMappingContext['mapping_validation'],
+            'source_metric_refs' => $genericMappingContext['source_metric_refs'],
             'structured_negotiation' => $structuredNegotiation,
             'conflict_matrix' => $orchestration['conflict_matrix'] ?? ($structuredNegotiation['conflicts'] ?? []),
             'negotiation_summary' => $orchestration['negotiation_summary'] ?? ($structuredNegotiation['summary'] ?? []),

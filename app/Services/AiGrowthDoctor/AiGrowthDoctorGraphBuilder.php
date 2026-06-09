@@ -4,6 +4,20 @@ namespace App\Services\AiGrowthDoctor;
 
 class AiGrowthDoctorGraphBuilder
 {
+    private $appProfileService;
+    private $metricMappingService;
+    private $genericMetricMapperService;
+
+    public function __construct(
+        AppProfileService $appProfileService,
+        MetricMappingService $metricMappingService,
+        GenericMetricMapperService $genericMetricMapperService
+    ) {
+        $this->appProfileService = $appProfileService;
+        $this->metricMappingService = $metricMappingService;
+        $this->genericMetricMapperService = $genericMetricMapperService;
+    }
+
     public function build(array $run): array
     {
         $result = $run['result'] ?? $run;
@@ -16,13 +30,17 @@ class AiGrowthDoctorGraphBuilder
         $metrics = $result['metrics'] ?? [];
         $guardrail = $metrics['guardrail_policy'] ?? [];
         $steps = $run['steps'] ?? ($result['workflow'] ?? []);
+        $mappingContext = $this->resolveMappingContext($run, $result, $metrics);
+        $appProfile = $mappingContext['app_profile'] ?? [];
+        $mappingValidation = $mappingContext['mapping_validation'] ?? [];
 
         $nodes = [
             $this->pipelineNode('checkpoint_load', 0, 260, 'Checkpoint Load', 'Run JSON input', $this->stepStatus($steps, 'checkpoint_load', $run['status'] ?? 'done'), 'loaded', 'Existing run JSON loaded', 'checkpoint', 'steps.checkpoint_load'),
             $this->pipelineNode('metrics_extraction', 260, 260, 'Metrics Extraction', 'Deterministic metrics', $this->stepStatus($steps, 'metrics_extraction'), 'extracted', 'Shared metrics context built', 'deterministic', 'steps.metrics_extraction'),
+            $this->mappingNode('app_data_mapping', 520, 260, $appProfile, $mappingValidation),
             $this->pipelineNode(
                 'guardrail_context',
-                520,
+                700,
                 260,
                 'Guardrail & Safe Context',
                 'Policy constraints',
@@ -32,16 +50,16 @@ class AiGrowthDoctorGraphBuilder
                 'guardrail',
                 'guardrail_context'
             ),
-            $this->agentNode('activation_agent', 820, 20, 'Activation Agent', 'activation', $agents['ai_activation_agent'] ?? [], 'agents.ai_activation_agent'),
-            $this->agentNode('retention_agent', 820, 150, 'Retention Agent', 'retention', $agents['ai_retention_agent'] ?? [], 'agents.ai_retention_agent'),
-            $this->agentNode('monetization_agent', 820, 280, 'Monetization Agent', 'monetization', $agents['ai_monetization_agent'] ?? [], 'agents.ai_monetization_agent'),
-            $this->agentNode('version_agent', 820, 410, 'Version Agent', 'version', $agents['ai_version_agent'] ?? [], 'agents.ai_version_agent'),
-            $this->agentNode('ads_agent', 820, 540, 'Ads Agent', 'ads', $agents['ai_ads_agent'] ?? [], 'agents.ai_ads_agent'),
-            $this->agentNode('tomorrow_forecast_agent', 820, 670, 'Tomorrow Forecast Agent', 'forecast', $agents['ai_tomorrow_forecast_agent'] ?? [], 'agents.ai_tomorrow_forecast_agent'),
-            $this->negotiationNode('structured_negotiation', 1180, 260, $structuredNegotiation),
-            $this->pipelineNode('orchestrator_evidence_assembly', 1480, 260, 'Orchestrator Evidence Assembly', 'Decision package', !empty($result['orchestrator_evidence_assembly']) ? 'done' : 'empty', 'evidence', 'Conflict-aware package assembled', 'orchestrator', 'orchestrator_evidence_assembly'),
-            $this->decisionNode('final_decision_agent', 1780, 260, $finalDecision),
-            $this->outputNode('decision_scenario_simulator', 2080, 260, $scenarioSimulator),
+            $this->agentNode('activation_agent', 980, 20, 'Activation Agent', 'activation', $agents['ai_activation_agent'] ?? [], 'agents.ai_activation_agent'),
+            $this->agentNode('retention_agent', 980, 150, 'Retention Agent', 'retention', $agents['ai_retention_agent'] ?? [], 'agents.ai_retention_agent'),
+            $this->agentNode('monetization_agent', 980, 280, 'Monetization Agent', 'monetization', $agents['ai_monetization_agent'] ?? [], 'agents.ai_monetization_agent'),
+            $this->agentNode('version_agent', 980, 410, 'Version Agent', 'version', $agents['ai_version_agent'] ?? [], 'agents.ai_version_agent'),
+            $this->agentNode('ads_agent', 980, 540, 'Ads Agent', 'ads', $agents['ai_ads_agent'] ?? [], 'agents.ai_ads_agent'),
+            $this->agentNode('tomorrow_forecast_agent', 980, 670, 'Tomorrow Forecast Agent', 'forecast', $agents['ai_tomorrow_forecast_agent'] ?? [], 'agents.ai_tomorrow_forecast_agent'),
+            $this->negotiationNode('structured_negotiation', 1340, 260, $structuredNegotiation),
+            $this->pipelineNode('orchestrator_evidence_assembly', 1640, 260, 'Orchestrator Evidence Assembly', 'Decision package', !empty($result['orchestrator_evidence_assembly']) ? 'done' : 'empty', 'evidence', 'Conflict-aware package assembled', 'orchestrator', 'orchestrator_evidence_assembly'),
+            $this->decisionNode('final_decision_agent', 1940, 260, $finalDecision),
+            $this->outputNode('decision_scenario_simulator', 2240, 260, $scenarioSimulator),
         ];
 
         return [
@@ -53,6 +71,13 @@ class AiGrowthDoctorGraphBuilder
             'details' => [
                 'steps' => $steps,
                 'metrics' => $metrics,
+                'app_data_mapping' => [
+                    'app_profile' => $appProfile,
+                    'metric_mapping' => $mappingContext['metric_mapping'] ?? [],
+                    'mapping_validation' => $mappingValidation,
+                    'generic_metrics_context' => $mappingContext['generic_metrics_context'] ?? [],
+                    'source_metric_refs' => $mappingContext['source_metric_refs'] ?? [],
+                ],
                 'guardrail_context' => $guardrail,
                 'agents' => $agents,
                 'structured_negotiation' => $structuredNegotiation,
@@ -63,6 +88,34 @@ class AiGrowthDoctorGraphBuilder
             ],
             'summary' => $this->summary($run, $result, $structuredNegotiation, $finalDecision),
         ];
+    }
+
+    private function resolveMappingContext(array $run, array $result, array $metrics): array
+    {
+        if (!empty($result['app_profile']) || !empty($result['generic_metrics_context'])) {
+            return [
+                'app_profile' => $result['app_profile'] ?? [],
+                'metric_mapping' => $result['metric_mapping'] ?? [],
+                'generic_metrics_context' => $result['generic_metrics_context'] ?? [],
+                'mapping_validation' => $result['mapping_validation'] ?? [],
+                'source_metric_refs' => $result['source_metric_refs'] ?? [],
+            ];
+        }
+
+        $sourceMetricsContext = [
+            'activation_metrics' => $metrics['activation_metrics'] ?? [],
+            'retention_metrics' => $metrics['retention_metrics'] ?? [],
+            'monetization_metrics' => $metrics['monetization_metrics'] ?? [],
+            'version_metrics' => $metrics['version_metrics'] ?? [],
+            'ads_metrics' => $metrics['ads_metrics'] ?? [],
+            'tomorrow_forecast_metrics' => $metrics['tomorrow_forecast_metrics'] ?? [],
+            'rule_based_decision' => $metrics['rule_based_decision'] ?? [],
+        ];
+
+        $appProfile = $this->appProfileService->resolve($result);
+        $metricMapping = $this->metricMappingService->resolve($result, $appProfile);
+
+        return $this->genericMetricMapperService->buildGenericContext($sourceMetricsContext, $metricMapping, $appProfile);
     }
 
     private function pipelineNode(string $id, int $x, int $y, string $title, string $subtitle, string $status, string $badge, string $summary, string $category, string $detailKey): array
@@ -95,6 +148,31 @@ class AiGrowthDoctorGraphBuilder
                 'model' => $agent['model'] ?? null,
                 'detailKey' => $detailKey,
                 'highlight' => $this->agentHighlight($title, $result),
+            ],
+        ];
+    }
+
+    private function mappingNode(string $id, int $x, int $y, array $appProfile, array $mappingValidation): array
+    {
+        $missingRequired = $mappingValidation['missing_required_metrics'] ?? [];
+        $warnings = array_merge(
+            $mappingValidation['data_quality_warnings'] ?? [],
+            $mappingValidation['low_sample_warnings'] ?? [],
+            $mappingValidation['missing_optional_metrics'] ?? []
+        );
+
+        return [
+            'id' => $id,
+            'type' => 'pipelineNode',
+            'position' => ['x' => $x, 'y' => $y],
+            'data' => [
+                'title' => 'App Data Mapping',
+                'subtitle' => $appProfile['app_name'] ?? 'Demo Mobile App',
+                'status' => $mappingValidation['status'] ?? 'unknown',
+                'badge' => ($mappingValidation['mapped_metric_count'] ?? 0) . ' mapped',
+                'summary' => 'Core action: ' . ($appProfile['core_action_name'] ?? 'core action') . '. Missing required: ' . count($missingRequired) . '. Warnings: ' . count($warnings) . '.',
+                'category' => 'metric contract',
+                'detailKey' => 'app_data_mapping',
             ],
         ];
     }
@@ -161,7 +239,8 @@ class AiGrowthDoctorGraphBuilder
         $specialists = ['activation_agent', 'retention_agent', 'monetization_agent', 'version_agent', 'ads_agent', 'tomorrow_forecast_agent'];
         $edges = [
             $this->edge('checkpoint-to-metrics', 'checkpoint_load', 'metrics_extraction', 'metrics', 'deterministic-edge'),
-            $this->edge('metrics-to-guardrail', 'metrics_extraction', 'guardrail_context', 'safe context', 'deterministic-edge'),
+            $this->edge('metrics-to-mapping', 'metrics_extraction', 'app_data_mapping', 'metric contract', 'deterministic-edge'),
+            $this->edge('mapping-to-guardrail', 'app_data_mapping', 'guardrail_context', 'generic metrics', 'deterministic-edge'),
         ];
 
         foreach ($specialists as $specialist) {

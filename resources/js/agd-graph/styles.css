@@ -427,6 +427,25 @@ body {
   line-height: 1.5;
 }
 
+.agd-mapping-table {
+  display: grid;
+  grid-template-columns: minmax(120px, 0.8fr) minmax(0, 1.2fr);
+  gap: 1px;
+  overflow: hidden;
+  border: 1px solid #dbe3ee;
+  border-radius: 8px;
+  background: #dbe3ee;
+}
+
+.agd-mapping-table div {
+  min-width: 0;
+  padding: 8px;
+  background: #ffffff;
+  font-size: 12px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
 .agd-empty,
 .agd-loading,
 .agd-loading-fallback,

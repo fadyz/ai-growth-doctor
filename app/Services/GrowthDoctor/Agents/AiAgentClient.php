@@ -300,6 +300,8 @@ class AiAgentClient
 
     private function buildRequestPayload(string $agentName, string $systemPrompt, array $expectedSchema, array $agentContext): array
     {
+        $systemPrompt = trim($systemPrompt . "\n\n" . $this->genericGrowthContractInstruction());
+        $expectedSchema = $this->addGenericOutputFields($expectedSchema);
         $apiKey = $this->apiKey();
         $model = $this->model();
         $apiBaseUrl = $this->apiBaseUrl();
@@ -379,6 +381,39 @@ class AiAgentClient
                 ],
             ],
         ];
+    }
+
+    private function genericGrowthContractInstruction(): string
+    {
+        return implode("\n", [
+            'Generic Growth Metric Contract instruction:',
+            'You are analyzing a mobile app growth system, not a fixed single app.',
+            'Use app_profile to understand the app category, core action, workspace concept, and monetization model.',
+            'Use generic_metrics_context as the primary growth metric layer.',
+            'Use source_metrics_context and source_metric_refs only for audit and app-specific translation.',
+            'Do not invent metrics.',
+            'Do not assume the app is a calorie tracker unless app_profile says so.',
+            'When possible, return both generic diagnosis/recommendation and app-specific diagnosis/recommendation.',
+            'Example generic wording: Core action success from entry users is weak.',
+            'Example app-specific wording: For this app, food logging success from session users is weak.',
+            'For final decisions, distinguish reusable generic growth principles from app-specific execution guidance.',
+        ]);
+    }
+
+    private function addGenericOutputFields(array $expectedSchema): array
+    {
+        foreach ([
+            'generic_diagnosis' => 'Reusable growth diagnosis in generic metric language.',
+            'app_specific_diagnosis' => 'App-specific translation based on app_profile.',
+            'generic_recommendation' => 'Reusable growth recommendation in generic metric language.',
+            'app_specific_recommendation' => 'App-specific execution guidance based on app_profile.',
+        ] as $field => $description) {
+            if (!array_key_exists($field, $expectedSchema)) {
+                $expectedSchema[$field] = $description;
+            }
+        }
+
+        return $expectedSchema;
     }
 
     private function callFromPreparedRequest(array $preparedRequest): array

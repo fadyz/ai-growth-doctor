@@ -4,6 +4,14 @@ AI Growth Doctor is a multi-agent operating copilot for reading daily product gr
 
 The system is designed as an **Agent Society**, not a single general-purpose AI answer. Deterministic services first extract the metrics and safe context. Specialist agents then analyze separate growth domains, challenge each other through a single-round structured negotiation, and pass the evidence package to a Final Decision Agent.
 
+Before the Agent Society reads the data, app-specific source metrics are mapped into a **Generic Growth Metric Contract**. Hitung Kalori remains the real aggregated case study, but metrics such as `food_add_success` are normalized into reusable concepts such as `activation.core_action_success_users`.
+
+Default app profile and metric mapping are defined in:
+
+```text
+config/ai_growth_doctor.php
+```
+
 The goal is not to automate business decisions blindly. The goal is to make the daily growth decision clearer, safer, and easier for a human operator to review.
 
 ## What It Answers
@@ -23,6 +31,7 @@ AI Growth Doctor helps answer questions such as:
 ```text
 Checkpoint JSON
 -> Metrics Extraction
+-> App Data Mapping
 -> Guardrail / Safe Context
 -> Specialist Agents
    - Activation Agent
@@ -40,6 +49,9 @@ Checkpoint JSON
 ## Core Capabilities
 
 - Deterministic metrics extraction
+- App Profile and Generic Growth Metric Contract
+- Source-to-generic metric mapping
+- Mapping validation
 - Guardrail Policy Engine
 - Forecast evaluation
 - Forecast calibration memory
@@ -107,6 +119,7 @@ The graph shows:
 
 - Checkpoint Load
 - Metrics Extraction
+- App Data Mapping
 - Guardrail & Safe Context
 - 6 Specialist Agents
 - Single-Round Structured Negotiation
@@ -267,6 +280,18 @@ Agent workflow:
 
 ```text
 docs/AGENT_WORKFLOW.md
+```
+
+Generic growth metric contract:
+
+```text
+docs/GENERIC_GROWTH_METRIC_CONTRACT.md
+```
+
+New app onboarding:
+
+```text
+docs/ONBOARD_NEW_APP.md
 ```
 
 ## Safety Notes

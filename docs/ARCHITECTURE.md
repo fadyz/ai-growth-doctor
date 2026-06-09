@@ -4,6 +4,8 @@ This document describes the current AI Growth Doctor architecture and how it sup
 
 AI Growth Doctor combines deterministic metric computation, specialist AI agents, forecast evaluation, calibration memory, guardrail policy, structured negotiation, final decision synthesis, scenario simulation, and a graph visualizer for auditability.
 
+The platform now includes a Generic Growth Metric Contract layer. App-specific metrics remain available as source evidence, but the Agent Society receives normalized generic metrics such as `activation.core_action_success_rate_from_entry` before guardrails and agents evaluate the run.
+
 ## System Goals
 
 - Convert daily growth data into an evidence-backed operating decision.
@@ -19,6 +21,7 @@ AI Growth Doctor combines deterministic metric computation, specialist AI agents
 ```text
 Checkpoint Data
 -> Metrics Extraction
+-> App Data Mapping
 -> Forecast Evaluation
 -> Forecast Calibration Memory
 -> Guardrail / Safe Context
@@ -35,6 +38,7 @@ The graph visualizer renders the same run as a horizontal Agent Society pipeline
 ```text
 Checkpoint Load
 -> Metrics Extraction
+-> App Data Mapping
 -> Guardrail & Safe Context
 -> Specialist Agents fan-out
 -> Single-Round Structured Negotiation
@@ -71,6 +75,10 @@ Examples:
 - `GuardrailPolicyEngine`
 - `StructuredNegotiationService`
 - `RunProgressStore`
+- `AppProfileService`
+- `MetricMappingService`
+- `GenericMetricMapperService`
+- `MappingValidationService`
 
 These services should be reproducible for the same input data.
 
@@ -166,6 +174,27 @@ Examples:
 - campaign conversion rate
 
 These numbers are calculated from input data. Agents should not invent them.
+
+## App Data Mapping
+
+App Data Mapping converts app-specific source metrics into the Generic Growth Metric Contract.
+
+It produces:
+
+- `app_profile`
+- `metric_mapping`
+- `generic_metrics_context`
+- `mapping_validation`
+- `source_metric_refs`
+
+Hitung Kalori example:
+
+```text
+food_add_success_users
+-> activation.core_action_success_users
+```
+
+The source metrics remain available under `result.metrics`; the generic contract is added as a normalized layer, not as a replacement.
 
 ## Forecast Evaluation and Calibration
 

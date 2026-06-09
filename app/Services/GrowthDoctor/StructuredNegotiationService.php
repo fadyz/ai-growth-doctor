@@ -58,6 +58,8 @@ class StructuredNegotiationService
                     return in_array($response['severity'] ?? 'none', ['material', 'critical'], true);
                 })),
                 'safe_context_refs' => [
+                    'app_profile' => $this->safeKeys($metricsContext['app_profile'] ?? [], ['app_id', 'app_name', 'app_category', 'core_action_name', 'core_action_success_label', 'monetization_model', 'data_mode']),
+                    'mapping_validation' => $this->safeKeys($metricsContext['mapping_validation'] ?? [], ['status', 'mapped_metric_count', 'required_metric_count', 'missing_required_metrics', 'missing_optional_metrics', 'low_sample_warnings']),
                     'guardrail_policy' => $this->safeKeys($guardrailResult, ['policy_version', 'winning_guardrail', 'triggered_guardrails', 'deterministic_decision']),
                     'forecast_evaluation' => $this->safeKeys($forecastEvaluation, ['status', 'actual_data_available_until', 'evaluated_count', 'pending_count']),
                     'calibration_memory' => $this->safeKeys($calibrationMemory, ['status', 'evaluations_used', 'overall_mature_hit_rate', 'trust_score', 'decision_instruction']),
@@ -108,6 +110,9 @@ class StructuredNegotiationService
     {
         if ($domain === 'activation' && $signals['ads_scaling_pressure'] && $signals['activation_weak']) {
             return $this->response($output, 'Ads Agent', 'objection', 'material', 'Scaling ads is unsafe while activation quality is weak.', $this->evidenceRefs($metricsContext, [
+                'metrics_context.generic_metrics_context.activation.core_action_success_rate_from_entry',
+                'metrics_context.generic_metrics_context.activation.core_action_success_rate_from_workspace',
+                'metrics_context.source_metric_refs.activation.core_action_success_users.source_path',
                 'metrics_context.activation_metrics.metrics_7d.food_add_success_rate_from_session',
                 'metrics_context.activation_metrics.metrics_7d.food_add_success_rate_from_workspace',
                 'metrics_context.guardrail_policy.deterministic_decision.blocked_actions',
@@ -116,18 +121,22 @@ class StructuredNegotiationService
 
         if ($domain === 'retention' && $signals['ads_scaling_pressure'] && $signals['retention_weak']) {
             return $this->response($output, 'Ads Agent', 'risk_warning', 'material', 'Ads scaling should remain constrained because retention or early habit evidence is weak.', $this->evidenceRefs($metricsContext, [
+                'metrics_context.generic_metrics_context.retention.d1_rate',
+                'metrics_context.generic_metrics_context.retention.habit_7d_rate',
+                'metrics_context.generic_metrics_context.retention.avg_active_days_7d',
                 'metrics_context.retention_metrics.metrics_7d_avg.d1_logged_rate',
                 'metrics_context.retention_metrics.metrics_7d_avg.habit_7d_rate',
-                'metrics_context.retention_metrics.metrics_7d_avg.avg_log_days_7d',
                 'metrics_context.guardrail_policy.triggered_guardrails.retention_guardrail',
             ], ['d1_retention_rate', 'habit_7d_rate', 'retention_health']), 'Prioritize first value and habit formation before increasing traffic volume.', $output['confidence']);
         }
 
         if ($domain === 'monetization' && $signals['retention_weak']) {
             return $this->response($output, 'Retention Agent', 'risk_warning', 'minor', 'Monetization pressure should stay segmented while retention evidence is weak.', $this->evidenceRefs($metricsContext, [
+                'metrics_context.generic_metrics_context.monetization.purchase_success_users',
+                'metrics_context.generic_metrics_context.monetization.purchase_success_rate_from_exposure',
+                'metrics_context.generic_metrics_context.retention.d1_rate',
                 'metrics_context.monetization_metrics.metrics_7d.purchase_success_users',
                 'metrics_context.monetization_metrics.metrics_7d.purchase_success_rate_from_paywall',
-                'metrics_context.retention_metrics.status',
                 'metrics_context.guardrail_policy.deterministic_decision.blocked_actions',
             ], ['retention_health', 'monetization_recommendation']), 'Keep paywall pressure targeted to users who reached the value moment.', $output['confidence']);
         }
@@ -143,9 +152,11 @@ class StructuredNegotiationService
             $campaignPath = $this->adsCampaignPathPrefix($metricsContext);
 
             return $this->response($output, 'Retention Agent', 'revised_recommendation', 'material', 'Given weak downstream quality or blocked actions, ads should not scale aggressively today.', $this->evidenceRefs($metricsContext, [
+                'metrics_context.generic_metrics_context.ads.cost_per_conversion',
+                'metrics_context.generic_metrics_context.ads.conversion_rate',
+                'metrics_context.generic_metrics_context.retention.d1_rate',
                 $campaignPath . '.recent_vs_previous.cost_per_install_change_pct',
                 $campaignPath . '.recent_vs_previous.conversion_change_pct',
-                'metrics_context.retention_metrics.status',
                 'metrics_context.guardrail_policy.deterministic_decision.blocked_actions',
             ], ['ads_quality', 'activation_health', 'retention_health', 'blocked_actions']), 'Keep budget stable, test higher-intent creative, and avoid aggressive scaling.', $output['confidence']);
         }
@@ -255,7 +266,7 @@ class StructuredNegotiationService
                 'severity' => $severity,
                 'initial_position' => 'Ads performance may support cautious acquisition testing.',
                 'counter_position' => 'Retention/activation guardrails make aggressive scaling risky.',
-                'evidence_summary' => $this->evidenceSummaryFromResponse($response),
+                'evidence_summary' => $this->evidenceSummaryFromResponse($response, $metricsContext),
                 'resolution_candidate' => $resolution,
             ];
         }
@@ -269,7 +280,7 @@ class StructuredNegotiationService
                 'severity' => $severity,
                 'initial_position' => 'Monetization signal suggests revenue opportunity.',
                 'counter_position' => 'Retention or activation weakness makes broad paywall pressure risky.',
-                'evidence_summary' => $this->evidenceSummaryFromResponse($response),
+                'evidence_summary' => $this->evidenceSummaryFromResponse($response, $metricsContext),
                 'resolution_candidate' => $resolution,
             ];
         }
@@ -283,7 +294,7 @@ class StructuredNegotiationService
                 'severity' => $severity,
                 'initial_position' => 'Forecast provides directional risk signal.',
                 'counter_position' => 'Forecast calibration is low-trust and should not override deterministic guardrails.',
-                'evidence_summary' => $this->evidenceSummaryFromResponse($response),
+                'evidence_summary' => $this->evidenceSummaryFromResponse($response, $metricsContext),
                 'resolution_candidate' => $resolution,
             ];
         }
@@ -296,16 +307,39 @@ class StructuredNegotiationService
             'severity' => $severity,
             'initial_position' => 'Specialist recommendation may imply a business action.',
             'counter_position' => 'Evidence refs indicate guardrail or cross-domain constraints need review.',
-            'evidence_summary' => $this->evidenceSummaryFromResponse($response),
+            'evidence_summary' => $this->evidenceSummaryFromResponse($response, $metricsContext),
             'resolution_candidate' => $resolution,
         ];
     }
 
-    private function evidenceSummaryFromResponse(array $response): array
+    private function evidenceSummaryFromResponse(array $response, array $metricsContext = []): array
     {
         $summary = [];
         foreach (array_slice($response['evidence_refs'] ?? [], 0, 5) as $ref) {
+            if (strpos((string) $ref, 'metrics_context.generic_metrics_context.') === 0) {
+                $relativePath = substr((string) $ref, strlen('metrics_context.'));
+                $genericPath = substr($relativePath, strlen('generic_metrics_context.'));
+                $value = $this->valueByPath($metricsContext['generic_metrics_context'] ?? [], $genericPath);
+                $summary[] = 'Generic metric: ' . str_replace('generic_metrics_context.', '', $relativePath) . ' = ' . $this->formatEvidenceValue((string) $ref, $value);
+                continue;
+            }
+
+            if (strpos((string) $ref, 'metrics_context.source_metric_refs.') === 0) {
+                $summary[] = 'App-specific mapping: ' . $ref;
+                continue;
+            }
+
+            if (strpos((string) $ref, 'metrics_context.guardrail_policy') === 0) {
+                $summary[] = 'Guardrail evidence: ' . $ref;
+                continue;
+            }
+
             $summary[] = 'Evidence ref: ' . $ref;
+        }
+
+        $profile = $metricsContext['app_profile'] ?? [];
+        if (!empty($profile['core_action_success_label'])) {
+            $summary[] = 'App-specific mapping: core_action_success = ' . $profile['core_action_success_label'];
         }
 
         return $summary;
@@ -604,8 +638,8 @@ class StructuredNegotiationService
         $forecastFinding = strtolower((string) (($forecastOutput['finding'] ?? '') . ' ' . ($forecastOutput['recommendation'] ?? '')));
 
         return [
-            'activation_weak' => $this->isWeakOutput($activationOutput) || $this->metricBelowAny($metricsContext['activation_metrics'] ?? [], ['workspace_rate', 'food_add_success_rate_from_session', 'activation_rate'], 30),
-            'retention_weak' => $this->isWeakOutput($retentionOutput) || $this->metricBelowAny($metricsContext['retention_metrics'] ?? [], ['d1_logged_rate', 'habit_7d_rate'], 25),
+            'activation_weak' => $this->isWeakOutput($activationOutput) || $this->metricBelowAny($metricsContext['generic_metrics_context']['activation'] ?? [], ['core_action_success_rate_from_entry'], 30) || $this->metricBelowAny($metricsContext['activation_metrics'] ?? [], ['workspace_rate', 'food_add_success_rate_from_session', 'activation_rate'], 30),
+            'retention_weak' => $this->isWeakOutput($retentionOutput) || $this->metricBelowAny($metricsContext['generic_metrics_context']['retention'] ?? [], ['d1_rate', 'habit_7d_rate'], 25) || $this->metricBelowAny($metricsContext['retention_metrics'] ?? [], ['d1_logged_rate', 'habit_7d_rate'], 25),
             'ads_scaling_pressure' => $this->containsAny($adsFinding, ['scale', 'increase_budget', 'cautious_test', 'evaluate_reset_campaign', 'shift_to_reset_campaign']),
             'ads_efficiency_signal' => $this->containsAny($adsFinding, ['efficient', 'healthy', 'recovery', 'scale', 'cpi']),
             'monetization_pressure' => $this->containsAny($monetizationFinding, ['increase', 'paywall', 'revenue', 'purchase', 'monetization']),
@@ -862,6 +896,22 @@ class StructuredNegotiationService
         $relativePath = substr($path, strlen($prefix));
 
         return $this->arrayPathExists($metricsContext, $relativePath);
+    }
+
+    private function valueByPath(array $input, string $path)
+    {
+        $segments = explode('.', $path);
+        $current = $input;
+
+        foreach ($segments as $segment) {
+            if (!is_array($current) || !array_key_exists($segment, $current)) {
+                return null;
+            }
+
+            $current = $current[$segment];
+        }
+
+        return $current;
     }
 
     private function arrayPathExists(array $input, string $path): bool
