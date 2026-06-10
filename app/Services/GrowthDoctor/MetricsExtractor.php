@@ -76,8 +76,8 @@ class MetricsExtractor
                 'purchase_success_rate_from_paywall' => $purchaseFromPaywall,
             ],
             'diagnosis' => $status === 'warning'
-                ? 'Activation masih perlu perhatian. User sudah masuk funnel, tetapi food_add_success belum cukup kuat.'
-                : 'Activation terlihat relatif stabil dalam 7 hari terakhir.',
+                ? 'Activation still needs attention. Users are entering the funnel, but food_add_success is not strong enough.'
+                : 'Activation looks relatively stable over the last 7 days.',
         ];
     }
 
@@ -149,10 +149,10 @@ class MetricsExtractor
                 'today_date' => now()->format('Y-m-d'),
             ],
             'diagnosis' => $status === 'warning'
-                ? 'D0/D1 mature rows belum cukup kuat. First-day action belum sepenuhnya berubah menjadi habit.'
+                ? 'Mature D0/D1 rows are not strong enough. First-day action has not fully converted into habit.'
                 : (!empty($pendingMaturity)
-                    ? 'Sebagian metric retention masih menunggu cohort maturity, jadi jangan dibaca sebagai penurunan final.'
-                    : 'Retention awal terlihat cukup stabil.'),
+                    ? 'Some retention metrics are still waiting for cohort maturity, so they should not be read as a final decline.'
+                    : 'Early retention looks reasonably stable.'),
         ];
     }
 
@@ -258,8 +258,8 @@ class MetricsExtractor
                 'purchase_success_rate_from_paywall' => $purchaseFromPaywall,
             ],
             'diagnosis' => $status === 'risk'
-                ? 'Paywall exposure tinggi, tetapi purchase belum mengikuti. Monetization pressure berisiko mengganggu activation.'
-                : 'Monetization signal masih perlu dibaca bersama activation karena sample purchase biasanya kecil.',
+                ? 'Paywall exposure is high, but purchase has not followed. Monetization pressure risks hurting activation.'
+                : 'Monetization signal still needs to be read alongside activation because purchase samples are usually small.',
         ];
     }
 
@@ -320,8 +320,8 @@ class MetricsExtractor
                 'ads_verdict' => [
                     'decision' => 'no_ads_data',
                     'confidence' => 0,
-                    'reason' => 'Belum ada data Google Ads di checkpoint.',
-                    'final_decision_impact' => 'Ads evidence belum memengaruhi final decision.',
+                    'reason' => 'No Google Ads data is available at this checkpoint.',
+                    'final_decision_impact' => 'Ads evidence has not influenced the final decision yet.',
                 ],
                 'overall' => [],
                 'campaigns' => [],
@@ -346,7 +346,7 @@ class MetricsExtractor
             'campaigns' => $campaigns,
             'campaign_context' => $adsCampaignContext,
             'ads_verdict' => $verdict,
-            'diagnosis' => $verdict['reason'] ?? 'Ads data tersedia dan perlu dibaca bersama activation/retention.',
+            'diagnosis' => $verdict['reason'] ?? 'Ads data is available and should be read together with activation/retention.',
         ];
     }
 
@@ -355,33 +355,33 @@ class MetricsExtractor
         $actions = [];
 
         if (($activation['status'] ?? null) === 'warning') {
-            $actions[] = 'Prioritaskan perbaikan first-log dan food_add_success flow.';
+            $actions[] = 'Prioritize fixing the first-log and food_add_success flow.';
         }
 
         if (($retention['status'] ?? null) === 'warning') {
-            $actions[] = 'Jangan scale ads agresif sebelum D0/D1 membaik.';
+            $actions[] = 'Do not scale ads aggressively before D0/D1 improves.';
         }
 
         if (($monetization['status'] ?? null) === 'risk') {
-            $actions[] = 'Kurangi atau tunda promo/paywall yang muncul terlalu awal.';
+            $actions[] = 'Reduce or delay promo/paywall exposure that appears too early.';
         }
 
         $adsDecision = $ads['ads_verdict']['decision'] ?? null;
 
         if ($adsDecision === 'shift_attention_to_reset_campaign') {
-            $actions[] = 'Jangan membaca campaign Volume Stabil lama sebagai campaign utama; evaluasi Volume Install Reset sebagai replacement/recovery candidate.';
+            $actions[] = 'Do not treat the old Volume Stabil campaign as the main campaign; evaluate Volume Install Reset as the replacement/recovery candidate.';
         }
 
         if ($adsDecision === 'hold_or_reduce_ads') {
-            $actions[] = 'Tahan atau kurangi budget ads yang memburuk sampai CPI/conversion stabil.';
+            $actions[] = 'Hold or reduce deteriorating ads budget until CPI/conversion stabilizes.';
         }
 
         if ($adsDecision === 'allow_cautious_ads_test') {
-            $actions[] = 'Ads boleh diuji kecil terkontrol hanya jika activation dan retention downstream tidak memburuk.';
+            $actions[] = 'Ads may run a small controlled test only if downstream activation and retention do not deteriorate.';
         }
 
         if (empty($actions)) {
-            $actions[] = 'Lanjut monitor. Belum ada sinyal risiko besar.';
+            $actions[] = 'Continue monitoring. There is no major risk signal yet.';
         }
 
         $verdict = 'CONTINUE_MONITORING';
@@ -402,8 +402,8 @@ class MetricsExtractor
                 ? 'partial_recovery_or_risk'
                 : 'stable',
             'summary' => $verdict === 'HOLD_AND_OPTIMIZE'
-                ? 'Ada sinyal yang belum cukup sehat. Fokus utama adalah menjaga activation dan retention sebelum scaling.'
-                : 'Metrik utama terlihat cukup stabil. Lanjutkan monitoring harian.',
+                ? 'Some signals are not healthy enough yet. The main focus is protecting activation and retention before scaling.'
+                : 'Core metrics look reasonably stable. Continue daily monitoring.',
             'recommended_actions' => $actions,
         ];
     }
@@ -1431,8 +1431,8 @@ class MetricsExtractor
             return [
                 'decision' => 'shift_attention_to_reset_campaign',
                 'confidence' => 75,
-                'reason' => 'Ada campaign legacy yang diketahui degraded dan ada reset successor. Jangan membaca pause legacy sebagai mematikan acquisition; itu recovery strategy.',
-                'final_decision_impact' => 'Final Decision boleh hold legacy campaign, sambil mengevaluasi reset campaign sebagai candidate utama dengan downstream activation/retention guardrail.',
+                'reason' => 'A known degraded legacy campaign and a reset successor both exist. Do not read pausing the legacy campaign as shutting down acquisition; it is a recovery strategy.',
+                'final_decision_impact' => 'Final Decision may hold the legacy campaign while evaluating the reset campaign as the primary candidate with downstream activation/retention guardrails.',
             ];
         }
 
@@ -1440,8 +1440,8 @@ class MetricsExtractor
             return [
                 'decision' => 'hold_or_reduce_ads',
                 'confidence' => 70,
-                'reason' => 'Ada campaign yang menunjukkan CPI memburuk dan conversion turun.',
-                'final_decision_impact' => 'Ads evidence memperkuat keputusan hold budget.',
+                'reason' => 'At least one campaign shows worsening CPI and declining conversions.',
+                'final_decision_impact' => 'Ads evidence strengthens the hold-budget decision.',
             ];
         }
 
@@ -1449,16 +1449,16 @@ class MetricsExtractor
             return [
                 'decision' => 'allow_cautious_ads_test',
                 'confidence' => 65,
-                'reason' => 'Ada campaign yang membaik secara cost/conversion, tetapi tetap perlu validasi downstream activation dan retention.',
-                'final_decision_impact' => 'Ads evidence boleh melembutkan keputusan hold menjadi small controlled test jika app metrics aman.',
+                'reason' => 'At least one campaign is improving on cost/conversion, but downstream activation and retention still need validation.',
+                'final_decision_impact' => 'Ads evidence may soften a hold decision into a small controlled test if app metrics are safe.',
             ];
         }
 
         return [
             'decision' => 'monitor_ads',
             'confidence' => 55,
-            'reason' => 'Belum ada sinyal ads yang cukup kuat untuk scale atau reduce.',
-            'final_decision_impact' => 'Ads evidence menjadi supporting context saja.',
+            'reason' => 'There is not yet a strong enough ads signal to scale or reduce.',
+            'final_decision_impact' => 'Ads evidence is supporting context only.',
         ];
     }
 

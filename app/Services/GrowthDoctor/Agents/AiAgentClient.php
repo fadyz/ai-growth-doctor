@@ -293,9 +293,9 @@ class AiAgentClient
 
     public function outputLanguage(): string
     {
-        $language = trim((string) env('AI_OUTPUT_LANGUAGE', 'Indonesian'));
+        $language = trim((string) env('AI_OUTPUT_LANGUAGE', 'English'));
 
-        return $language !== '' ? $language : 'Indonesian';
+        return $language !== '' ? $language : 'English';
     }
 
     private function buildRequestPayload(string $agentName, string $systemPrompt, array $expectedSchema, array $agentContext): array
@@ -313,7 +313,7 @@ class AiAgentClient
                 'result' => [
                     'agent' => $agentName,
                     'status' => 'disabled',
-                    'diagnosis' => 'AI API key belum diset. Isi SUMOPOD_API_KEY atau OPENAI_API_KEY agar Agent AI aktif.',
+                    'diagnosis' => 'AI API key is not configured. Set SUMOPOD_API_KEY or OPENAI_API_KEY to enable AI agents.',
                 ],
             ];
         }

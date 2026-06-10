@@ -96,7 +96,9 @@ function GraphCanvas({ graph, graphUrl }) {
         <div className="agd-summary">
           <SummaryCard label="Run status" value={graph.summary?.status || 'unknown'} />
           <SummaryCard label="Agents" value={graph.summary?.agent_count ?? 6} />
-          <SummaryCard label="Conflicts" value={graph.summary?.total_conflict_count ?? 0} />
+          <SummaryCard label="Hard conflicts" value={graph.summary?.total_conflict_count ?? 0} />
+          <SummaryCard label="Bounded tensions" value={graph.summary?.bounded_tension_count ?? 0} />
+          <SummaryCard label="Partial concessions" value={graph.summary?.partial_concession_count ?? 0} />
           <SummaryCard label="Final verdict" value={graph.summary?.business_verdict || 'No verdict'} />
           <SummaryCard label="Forecast trust" value={graph.summary?.forecast_trust_score ?? 'N/A'} />
           <SummaryCard label="Unsafe prevented" value={graph.summary?.unsafe_recommendation_prevented === true ? 'Yes' : graph.summary?.unsafe_recommendation_prevented === false ? 'No' : 'N/A'} />

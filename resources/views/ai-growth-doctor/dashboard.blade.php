@@ -2345,7 +2345,7 @@
                                                 $severityClass = in_array($severity, ['material', 'critical'], true)
                                                     ? 'bg-amber-50 text-amber-700 ring-amber-200'
                                                     : 'bg-slate-50 text-slate-600 ring-slate-200';
-                                                $responseType = $response['type'] ?? ($response['response_type'] ?? '-');
+                                                $responseType = $response['ui_label'] ?? ($response['display_type'] ?? ($response['type'] ?? ($response['response_type'] ?? '-')));
                                             @endphp
                                             <tr>
                                                 <td class="px-4 py-3 font-medium text-slate-950">{{ $response['from'] ?? ($response['agent_name'] ?? '-') }}</td>
@@ -2370,26 +2370,29 @@
 
                     @if (!empty($conflictMatrix))
                         <div class="mb-5">
-                            <div class="font-semibold text-slate-900 mb-3">Conflict Matrix</div>
+                            <div class="font-semibold text-slate-900 mb-3">Conflict Matrix / Bounded Tensions</div>
                             <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
                                 @foreach ($conflictMatrix as $conflict)
-                                    <div class="border border-amber-200 bg-amber-50/60 rounded-2xl p-4">
+                                    @php
+                                        $isBoundedTension = (($conflict['type'] ?? null) === 'bounded_tension') || (($conflict['conflict_type'] ?? null) === 'bounded_tension');
+                                    @endphp
+                                    <div class="border {{ $isBoundedTension ? 'border-sky-200 bg-sky-50/60' : 'border-amber-200 bg-amber-50/60' }} rounded-2xl p-4">
                                         <div class="flex items-start justify-between gap-3 mb-3">
                                             <div>
-                                                <div class="text-xs text-amber-700 mb-1">{{ $conflict['conflict_id'] ?? '-' }}</div>
-                                                <div class="font-bold text-amber-950">{{ $conflict['topic'] ?? '-' }}</div>
+                                                <div class="text-xs {{ $isBoundedTension ? 'text-sky-700' : 'text-amber-700' }} mb-1">{{ $conflict['conflict_id'] ?? '-' }}</div>
+                                                <div class="font-bold {{ $isBoundedTension ? 'text-sky-950' : 'text-amber-950' }}">{{ $conflict['title'] ?? ($conflict['topic'] ?? '-') }}</div>
                                             </div>
-                                            <span class="inline-flex rounded-full px-2.5 py-1 text-[11px] font-semibold bg-white text-amber-700 ring-1 ring-amber-200">
-                                                {{ strtoupper(str_replace('_', ' ', $conflict['severity'] ?? 'none')) }}
+                                            <span class="inline-flex rounded-full px-2.5 py-1 text-[11px] font-semibold bg-white {{ $isBoundedTension ? 'text-sky-700 ring-sky-200' : 'text-amber-700 ring-amber-200' }} ring-1">
+                                                {{ $isBoundedTension ? 'BOUNDED TENSION' : strtoupper(str_replace('_', ' ', $conflict['severity'] ?? 'none')) }}
                                             </span>
                                         </div>
-                                        <div class="text-xs text-amber-800 mb-3">
-                                            Agents: {{ $displayValue($conflict['agents_involved'] ?? []) }}
+                                        <div class="text-xs {{ $isBoundedTension ? 'text-sky-800' : 'text-amber-800' }} mb-3">
+                                            Agents: {{ $displayValue($conflict['supporting_agents'] ?? ($conflict['agents_involved'] ?? [])) }}
                                         </div>
                                         <div class="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
-                                            <div class="bg-white/80 border border-amber-200 rounded-xl p-3"><strong>Initial Position</strong><br>{{ $conflict['initial_position'] ?? '-' }}</div>
-                                            <div class="bg-white/80 border border-amber-200 rounded-xl p-3"><strong>Counter Position</strong><br>{{ $conflict['counter_position'] ?? '-' }}</div>
-                                            <div class="bg-white/80 border border-amber-200 rounded-xl p-3 md:col-span-2"><strong>Resolution Candidate</strong><br>{{ $conflict['resolution_candidate'] ?? '-' }}</div>
+                                            <div class="bg-white/80 border {{ $isBoundedTension ? 'border-sky-200' : 'border-amber-200' }} rounded-xl p-3"><strong>{{ $isBoundedTension ? 'Domain-only Tension' : 'Initial Position' }}</strong><br>{{ $conflict['domain_only_tension'] ?? ($conflict['initial_position'] ?? '-') }}</div>
+                                            <div class="bg-white/80 border {{ $isBoundedTension ? 'border-sky-200' : 'border-amber-200' }} rounded-xl p-3"><strong>{{ $isBoundedTension ? 'Bounded-system Resolution' : 'Counter Position' }}</strong><br>{{ $conflict['bounded_system_resolution'] ?? ($conflict['counter_position'] ?? '-') }}</div>
+                                            <div class="bg-white/80 border {{ $isBoundedTension ? 'border-sky-200' : 'border-amber-200' }} rounded-xl p-3 md:col-span-2"><strong>Resolution Mode</strong><br>{{ $conflict['resolution_mode'] ?? ($conflict['resolution_candidate'] ?? '-') }}</div>
                                         </div>
                                     </div>
                                 @endforeach
@@ -2399,7 +2402,7 @@
 
                     <div class="grid grid-cols-1 md:grid-cols-4 gap-3 mb-5">
                         <div class="bg-slate-50 border border-slate-200 rounded-xl p-4">
-                            <div class="text-xs text-slate-500 mb-1">Total Conflicts</div>
+                            <div class="text-xs text-slate-500 mb-1">Hard Conflicts</div>
                             <div class="text-2xl font-bold">{{ $negotiationSummary['total_conflict_count'] ?? count($conflictMatrix) }}</div>
                         </div>
                         <div class="bg-slate-50 border border-slate-200 rounded-xl p-4">
@@ -2411,8 +2414,8 @@
                             <div class="text-2xl font-bold">{{ $negotiationSummary['critical_conflict_count'] ?? 0 }}</div>
                         </div>
                         <div class="bg-slate-50 border border-slate-200 rounded-xl p-4">
-                            <div class="text-xs text-slate-500 mb-1">Revised Recommendations</div>
-                            <div class="text-2xl font-bold">{{ $negotiationSummary['revised_recommendation_count'] ?? 0 }}</div>
+                            <div class="text-xs text-slate-500 mb-1">Bounded Tensions</div>
+                            <div class="text-2xl font-bold">{{ $negotiationSummary['bounded_tension_count'] ?? 0 }}</div>
                         </div>
                     </div>
 

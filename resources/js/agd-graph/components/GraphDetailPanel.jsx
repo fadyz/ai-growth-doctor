@@ -258,6 +258,22 @@ function AgentDetails({ graph, node }) {
       <Section title="Recommendation">
         <p>{stringifyValue(summary?.recommendation || result.recommended_experiment || result.recommended_preventive_action || result.impact_on_final_decision || result.recommended_actions)}</p>
       </Section>
+      <Section title="Bounded System Position">
+        <dl className="agd-detail-dl">
+          <dt>Domain-only position</dt>
+          <dd>{summary?.domain_only_position || 'No data available'}</dd>
+          <dt>Bounded-system position</dt>
+          <dd>{summary?.bounded_system_position || 'No data available'}</dd>
+          <dt>Constraints considered</dt>
+          <dd>{asArray(summary?.constraint_acknowledgement).join(', ') || 'No data available'}</dd>
+          <dt>Negotiation need</dt>
+          <dd>{summary?.negotiation_need || 'No data available'}</dd>
+          <dt>Residual conflict</dt>
+          <dd>{summary?.residual_conflict_severity || summary?.residual_conflict || 'No data available'}</dd>
+          <dt>Why no further negotiation</dt>
+          <dd>{summary?.why_no_further_negotiation_needed || 'No data available'}</dd>
+        </dl>
+      </Section>
       <Section title="Caveat / Risk">
         <p>{stringifyValue(summary?.caveat_or_risk || result.risks || result.risk_flags || result.guardrails)}</p>
       </Section>
@@ -283,8 +299,16 @@ function NegotiationDetails({ negotiation }) {
           <dd>{String(execution.early_exit ?? false)}</dd>
           <dt>Early exit reason</dt>
           <dd>{execution.early_exit_reason || 'No data available'}</dd>
+          <dt>Early exit interpretation</dt>
+          <dd>{execution.early_exit_interpretation || 'No data available'}</dd>
           <dt>Material conflicts remaining</dt>
           <dd>{execution.material_or_higher_conflict_count ?? negotiation.summary?.material_or_higher_conflict_count ?? 0}</dd>
+          <dt>Bounded soft tensions</dt>
+          <dd>{execution.bounded_tension_count ?? negotiation.summary?.bounded_tension_count ?? 0}</dd>
+          <dt>Partial concessions</dt>
+          <dd>{execution.partial_concession_count ?? negotiation.summary?.partial_concession_count ?? 0}</dd>
+          <dt>Safety-bounded revisions</dt>
+          <dd>{execution.safety_bounded_revision_count ?? negotiation.summary?.safety_bounded_revision_count ?? 0}</dd>
           <dt>Raw chain-of-thought allowed</dt>
           <dd>{String(rules.raw_chain_of_thought_allowed ?? false)}</dd>
           <dt>Evidence required</dt>
@@ -292,6 +316,13 @@ function NegotiationDetails({ negotiation }) {
           <dt>Final decision owner</dt>
           <dd>{rules.final_decision_owner || 'FinalDecisionAgent'}</dd>
         </dl>
+      </Section>
+      <Section title="Why did Round 2 not run?">
+        <p>
+          Each specialist agent receives bounded safe context before negotiation. In this run, agents surfaced soft cross-domain tensions,
+          but the challenged recommendations were already safety-bounded. Aggressive scaling was rejected while cautious controlled testing
+          was preserved. Because no unresolved material or critical conflict remained, Round 2 and Round 3 were skipped by early-exit policy.
+        </p>
       </Section>
       <Section title="Round Summaries">
         <div className="agd-evidence-list">
@@ -309,8 +340,17 @@ function NegotiationDetails({ negotiation }) {
       <Section title="Negotiation Timeline">
         <NegotiationTimeline items={negotiation.negotiation_timeline} />
       </Section>
-      <Section title="Conflict Matrix">
-        <ConflictMatrix conflicts={negotiation.conflicts} />
+      <Section title="Hard Conflicts">
+        <ConflictMatrix
+          conflicts={asArray(negotiation.conflicts).filter((conflict) => conflict.type !== 'bounded_tension' && conflict.conflict_type !== 'bounded_tension')}
+          emptyLabel="0 unresolved material conflicts"
+        />
+      </Section>
+      <Section title="Bounded Soft Tensions">
+        <ConflictMatrix
+          conflicts={asArray(negotiation.conflicts).filter((conflict) => conflict.type === 'bounded_tension' || conflict.conflict_type === 'bounded_tension')}
+          emptyLabel="No bounded soft tensions"
+        />
       </Section>
       <Section title="Baseline Comparison">
         <dl className="agd-detail-dl">

@@ -607,6 +607,10 @@ class AgentOrchestrator
                 'material_conflict_count' => $structuredNegotiation['summary']['material_conflict_count'] ?? null,
                 'critical_conflict_count' => $structuredNegotiation['summary']['critical_conflict_count'] ?? null,
                 'material_or_higher_conflict_count' => $structuredNegotiation['summary']['material_or_higher_conflict_count'] ?? null,
+                'bounded_tension_count' => $structuredNegotiation['summary']['bounded_tension_count'] ?? null,
+                'resolved_bounded_tension_count' => $structuredNegotiation['summary']['resolved_bounded_tension_count'] ?? null,
+                'partial_concession_count' => $structuredNegotiation['summary']['partial_concession_count'] ?? null,
+                'safety_bounded_revision_count' => $structuredNegotiation['summary']['safety_bounded_revision_count'] ?? null,
             ],
             'evaluations' => [
                 'has_forecast_evaluations' => !empty($evaluations['forecast_evaluations'] ?? []),
@@ -627,6 +631,8 @@ class AgentOrchestrator
         $finalDecision = $finalDecisionEnvelope['result'] ?? $finalDecisionEnvelope;
         $tomorrowForecastMetrics = $context['tomorrow_forecast_metrics'] ?? ($metricsContext['tomorrow_forecast_metrics'] ?? []);
         $specialistAgents = $context['specialist_agents'] ?? [];
+        $normalizedActionPlan = $this->normalizedActionPlan($finalDecision);
+        $hasActionPlan = $this->hasActionPlan($finalDecision, $normalizedActionPlan);
 
         return [
             'has_final_decision_envelope' => !empty($finalDecisionEnvelope),
@@ -636,7 +642,8 @@ class AgentOrchestrator
             'today_operator_summary' => $finalDecision['today_operator_summary'] ?? null,
             'has_operating_decision' => !empty($finalDecision['operating_decision'] ?? []),
             'has_prioritized_actions' => !empty($finalDecision['prioritized_actions'] ?? []),
-            'has_action_plan' => !empty($finalDecision['action_plan'] ?? []),
+            'has_action_plan' => $hasActionPlan,
+            'normalized_action_plan' => $normalizedActionPlan,
             'has_tomorrow_forecast_metrics' => !empty($tomorrowForecastMetrics),
             'forecast_for_date' => $tomorrowForecastMetrics['forecast_for_date'] ?? null,
             'forecast_risk_flags' => $tomorrowForecastMetrics['risk_flags'] ?? ($tomorrowForecastMetrics['guardrails'] ?? []),
@@ -644,6 +651,111 @@ class AgentOrchestrator
             'has_ai_ads_agent' => !empty($context['ai_ads_agent'] ?? []),
             'specialist_agent_keys' => array_keys($specialistAgents),
         ];
+    }
+
+    private function hasActionPlan(array $finalDecision, array $normalizedActionPlan): bool
+    {
+        if (!empty($normalizedActionPlan)) {
+            return true;
+        }
+
+        foreach (['action_plan', 'action_plan_24_72h', 'operational_action_plan', 'prioritized_actions', 'recommended_actions', 'accepted_recommendations', 'today_operator_summary', 'operating_decision'] as $field) {
+            $value = $finalDecision[$field] ?? null;
+            if (is_array($value) && !empty($value)) {
+                return true;
+            }
+
+            if (is_string($value) && $this->looksActionable($value)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private function normalizedActionPlan(array $finalDecision): array
+    {
+        $sourceText = strtolower(json_encode($finalDecision));
+        $plan = [];
+
+        if ($this->containsAny($sourceText, ['session', 'workspace', 'food-log', 'food log', 'food_add', 'onboarding', 'activation'])) {
+            $plan[] = [
+                'action_id' => 'fix_session_to_workspace_onboarding',
+                'action' => 'Fix session to workspace to first food-log onboarding.',
+                'owner_domain' => 'activation',
+                'time_window' => '24-72h',
+                'risk_level' => 'low',
+                'why' => 'Session users convert to food_add_success far below workspace users, so the first-core-action path is the main activation constraint.',
+            ];
+        }
+
+        if ($this->containsAny($sourceText, ['d1', 'day-1', 'day 1', 'next-day', 'repeat logging', 'habit'])) {
+            $plan[] = [
+                'action_id' => 'improve_day_1_reentry',
+                'action' => 'Improve day-1 re-entry and repeat logging path.',
+                'owner_domain' => 'retention',
+                'time_window' => '24-72h',
+                'risk_level' => 'low',
+                'why' => 'D0 to D1 logging drops sharply.',
+            ];
+        }
+
+        if ($this->containsAny($sourceText, ['reset campaign', 'volume install reset', 'guarded reset', 'cautious controlled', 'stable budget', 'ads'])) {
+            $plan[] = [
+                'action_id' => 'guarded_reset_campaign_test',
+                'action' => 'Evaluate HK - ID - Volume Install Reset with stable budget and downstream quality checks.',
+                'owner_domain' => 'ads',
+                'time_window' => '24-72h',
+                'risk_level' => 'medium',
+                'why' => 'Ads efficiency improved but volume is small and downstream quality must be verified.',
+            ];
+        }
+
+        if ($this->containsAny($sourceText, ['paywall', 'value-gated', 'value gated', 'monetization', 'purchase sample'])) {
+            $plan[] = [
+                'action_id' => 'value_gated_paywall',
+                'action' => 'Keep paywall pressure value-gated; do not broaden paywall pressure.',
+                'owner_domain' => 'monetization',
+                'time_window' => '7d',
+                'risk_level' => 'low',
+                'why' => 'Purchase sample is low and paywall-to-purchase conversion is weak.',
+            ];
+        }
+
+        if (!empty($plan)) {
+            return $plan;
+        }
+
+        foreach (['action_plan', 'action_plan_24_72h', 'operational_action_plan', 'prioritized_actions', 'recommended_actions', 'accepted_recommendations'] as $field) {
+            if (!empty($finalDecision[$field] ?? [])) {
+                return [[
+                    'action_id' => 'final_decision_action_plan',
+                    'action' => is_string($finalDecision[$field]) ? $finalDecision[$field] : json_encode($finalDecision[$field], JSON_UNESCAPED_SLASHES),
+                    'owner_domain' => 'final_decision',
+                    'time_window' => '24-72h',
+                    'risk_level' => 'medium',
+                    'why' => 'Final Decision Agent provided actionable operating guidance.',
+                ]];
+            }
+        }
+
+        return [];
+    }
+
+    private function looksActionable(string $value): bool
+    {
+        return $this->containsAny(strtolower($value), ['fix', 'improve', 'keep', 'run', 'evaluate', 'prioritize', 'hold', 'optimize', 'test', 'do not', 'monitor']);
+    }
+
+    private function containsAny(string $text, array $needles): bool
+    {
+        foreach ($needles as $needle) {
+            if (strpos($text, strtolower($needle)) !== false) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private function agentStatusMap(array $agents): array

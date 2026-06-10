@@ -28,9 +28,9 @@ class ForecastCalibrationService
                 'group_accuracy' => [],
                 'decision_instruction' => [
                     'forecast_role' => 'supporting_guardrail_only',
-                    'how_final_agent_should_use_forecast' => 'Belum ada histori evaluasi forecast. Gunakan forecast sebagai sinyal directional, bukan veto utama.',
-                    'when_to_trust_more' => 'Setelah ada minimal 3 evaluation mature dengan hit rate >= 70%.',
-                    'when_to_trust_less' => 'Jika mature hit rate < 50% pada 3 evaluation terakhir.',
+                    'how_final_agent_should_use_forecast' => 'No forecast evaluation history exists yet. Use forecast as a directional signal, not as the primary veto.',
+                    'when_to_trust_more' => 'After at least 3 mature evaluations with hit rate >= 70%.',
+                    'when_to_trust_less' => 'If mature hit rate is < 50% across the latest 3 evaluations.',
                 ],
             ];
 
@@ -329,7 +329,7 @@ class ForecastCalibrationService
             return [
                 'systematic_bias_detected' => false,
                 'bias_type' => 'not_enough_repeated_evidence',
-                'evidence' => 'Belum ada metric dengan bias berulang minimal 2 evaluation.',
+                'evidence' => 'No metric has repeated bias across at least 2 evaluations yet.',
             ];
         }
 
@@ -338,7 +338,7 @@ class ForecastCalibrationService
         return [
             'systematic_bias_detected' => true,
             'bias_type' => $top['bias'] . '_' . $top['metric'],
-            'evidence' => $top['metric'] . ' memiliki bias ' . $top['bias'] . ' pada ' . $top['evaluated_count'] . ' evaluation, hit rate ' . $top['hit_rate'] . '%.',
+            'evidence' => $top['metric'] . ' has ' . $top['bias'] . ' bias across ' . $top['evaluated_count'] . ' evaluations, hit rate ' . $top['hit_rate'] . '%.',
         ];
     }
 
@@ -349,7 +349,7 @@ class ForecastCalibrationService
                 'forecast_confidence_multiplier' => 0.75,
                 'range_adjustment' => 'widen',
                 'guardrail_adjustment' => 'use_directionally_only',
-                'reason' => 'Belum ada mature forecast hit rate.',
+                'reason' => 'No mature forecast hit rate is available yet.',
             ];
         }
 
@@ -358,7 +358,7 @@ class ForecastCalibrationService
                 'forecast_confidence_multiplier' => 1.0,
                 'range_adjustment' => 'keep',
                 'guardrail_adjustment' => 'forecast_can_strengthen_guardrail',
-                'reason' => 'Trust score cukup tinggi berdasarkan histori mature metrics.',
+                'reason' => 'Trust score is high enough based on mature metric history.',
             ];
         }
 
@@ -367,7 +367,7 @@ class ForecastCalibrationService
                 'forecast_confidence_multiplier' => 0.85,
                 'range_adjustment' => 'slightly_widen',
                 'guardrail_adjustment' => 'supporting_guardrail_only',
-                'reason' => 'Trust score medium; forecast berguna tetapi jangan menjadi veto tunggal.',
+                'reason' => 'Trust score is medium; forecast is useful but should not be the sole veto.',
             ];
         }
 
@@ -375,7 +375,7 @@ class ForecastCalibrationService
             'forecast_confidence_multiplier' => 0.65,
             'range_adjustment' => 'widen',
             'guardrail_adjustment' => 'do_not_use_as_primary_veto',
-            'reason' => 'Trust score rendah; forecast perlu dikalahkan oleh actual mature metrics.',
+            'reason' => 'Trust score is low; forecast should be outweighed by actual mature metrics.',
         ];
     }
 
@@ -396,8 +396,8 @@ class ForecastCalibrationService
         return [
             'forecast_role' => $forecastRole,
             'how_final_agent_should_use_forecast' => $this->decisionInstructionText($forecastRole, $hitRate, $weakMetricNames),
-            'when_to_trust_more' => 'Jika minimal 3 evaluation terakhir memiliki mature hit rate >= 70% dan pending maturity rendah.',
-            'when_to_trust_less' => 'Jika mature hit rate < 50% atau metric penting berulang kali miss_low/miss_high.',
+            'when_to_trust_more' => 'If at least the latest 3 evaluations have mature hit rate >= 70% and low pending maturity.',
+            'when_to_trust_less' => 'If mature hit rate is < 50% or important metrics repeatedly miss_low/miss_high.',
             'weak_metrics_to_treat_carefully' => $weakMetricNames,
             'group_accuracy_snapshot' => $groupAccuracy,
         ];
@@ -405,18 +405,18 @@ class ForecastCalibrationService
 
     private function decisionInstructionText(string $forecastRole, ?float $hitRate, array $weakMetricNames): string
     {
-        $hitRateText = $hitRate === null ? 'belum tersedia' : $hitRate . '%';
-        $weakText = empty($weakMetricNames) ? 'belum ada weak metric berulang' : implode(', ', $weakMetricNames);
+        $hitRateText = $hitRate === null ? 'not available yet' : $hitRate . '%';
+        $weakText = empty($weakMetricNames) ? 'no repeated weak metric yet' : implode(', ', $weakMetricNames);
 
         if ($forecastRole === 'can_strengthen_guardrail') {
-            return 'Forecast boleh memperkuat guardrail keputusan, tetapi tetap tidak boleh menggantikan actual mature metrics. Mature hit rate historis: ' . $hitRateText . '. Weak metrics: ' . $weakText . '.';
+            return 'Forecast may strengthen the decision guardrail, but it still must not replace actual mature metrics. Historical mature hit rate: ' . $hitRateText . '. Weak metrics: ' . $weakText . '.';
         }
 
         if ($forecastRole === 'supporting_guardrail') {
-            return 'Gunakan forecast sebagai supporting guardrail. Jangan jadikan forecast sebagai veto utama jika actual mature metrics bertentangan. Mature hit rate historis: ' . $hitRateText . '. Weak metrics: ' . $weakText . '.';
+            return 'Use forecast as a supporting guardrail. Do not make forecast the primary veto if actual mature metrics disagree. Historical mature hit rate: ' . $hitRateText . '. Weak metrics: ' . $weakText . '.';
         }
 
-        return 'Gunakan forecast hanya sebagai directional signal. Final decision harus lebih berat ke actual mature metrics dan specialist agent evidence. Mature hit rate historis: ' . $hitRateText . '. Weak metrics: ' . $weakText . '.';
+        return 'Use forecast only as a directional signal. Final decision should weigh actual mature metrics and specialist agent evidence more heavily. Historical mature hit rate: ' . $hitRateText . '. Weak metrics: ' . $weakText . '.';
     }
 
     private function latestEvaluation(array $evaluations): array

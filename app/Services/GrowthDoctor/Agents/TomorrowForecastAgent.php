@@ -120,8 +120,6 @@ class TomorrowForecastAgent
             return null;
         }
 
-        $english = strtolower($this->client->outputLanguage()) === 'english';
-
         return [
             'agent' => 'Tomorrow Forecast Agent',
             'status' => 'inactive',
@@ -129,9 +127,7 @@ class TomorrowForecastAgent
             'result' => [
                 'prediction_status' => 'no_forecast_metrics',
                 'confidence_score' => 0,
-                'summary' => $english
-                    ? 'Tomorrow forecast metrics are not available yet. Make sure MetricsExtractor sends tomorrow_forecast_metrics.'
-                    : 'Tomorrow forecast metrics belum tersedia. Pastikan MetricsExtractor mengirim tomorrow_forecast_metrics.',
+                'summary' => 'Tomorrow forecast metrics are not available yet. Make sure MetricsExtractor sends tomorrow_forecast_metrics.',
                 'forecast_for_date' => null,
                 'predicted_metrics' => [],
                 'risk_flags' => [],
@@ -175,27 +171,27 @@ class TomorrowForecastAgent
         $riskDrivers = [];
 
         if ($d1 !== null && $d1 < 15) {
-            $riskDrivers[] = 'Prediksi D1 logged rate berada di bawah threshold caution 15%.';
+            $riskDrivers[] = 'Predicted D1 logged rate is below the 15% caution threshold.';
         }
 
         if ($habit !== null && $habit < 16) {
-            $riskDrivers[] = 'Prediksi habit 7D masih di bawah threshold caution 16%.';
+            $riskDrivers[] = 'Predicted 7-day habit remains below the 16% caution threshold.';
         }
 
         if ($foodSession !== null && $foodSession < 40) {
-            $riskDrivers[] = 'Prediksi food_add_success_rate_from_session di bawah 40%, menandakan risiko aktivasi awal.';
+            $riskDrivers[] = 'Predicted food_add_success_rate_from_session is below 40%, indicating early activation risk.';
         }
 
         if ($foodWorkspace !== null && $foodWorkspace < 80) {
-            $riskDrivers[] = 'Prediksi food_add_success_rate_from_workspace di bawah 80%, menandakan kualitas workspace perlu dipantau.';
+            $riskDrivers[] = 'Predicted food_add_success_rate_from_workspace is below 80%, indicating workspace quality needs monitoring.';
         }
 
         if ($purchaseUsers !== null && $purchaseUsers < 3) {
-            $riskDrivers[] = 'Prediksi purchase_success_users masih kecil, sehingga sinyal monetisasi besok berisiko noisy.';
+            $riskDrivers[] = 'Predicted purchase_success_users remains small, so tomorrow monetization signal may be noisy.';
         }
 
         if (empty($riskDrivers)) {
-            $riskDrivers[] = 'Tidak ada forecast risk flag utama yang memburuk, namun forecast tetap perlu divalidasi besok.';
+            $riskDrivers[] = 'No major forecast risk flag is deteriorating, but the forecast still needs validation tomorrow.';
         }
 
         $predictionStatus = $this->predictionStatusFromRiskFlags($riskFlags, $riskDrivers);
@@ -243,15 +239,15 @@ class TomorrowForecastAgent
                     'data_as_of_date' => $dataAsOfDate,
                     'evaluation_ready_after' => $evaluationReadyAfter,
                     'evaluation_status' => $evaluationStatus,
-                    'hit_rule' => 'Actual untuk forecast_for_date dianggap hit jika berada di antara low dan high untuk metric terkait.',
+                    'hit_rule' => 'Actuals for forecast_for_date are considered a hit when they fall between the low and high range for the related metric.',
                     'readiness_rule' => $evaluationRule,
-                    'decision_quality_rule' => 'Jika risiko utama yang diprediksi benar terjadi saat actual_data_available_until >= forecast_for_date, forecast caution dinilai valid. Jika actual keluar range pada metric utama, turunkan confidence forecast dan koreksi decision rule.',
+                    'decision_quality_rule' => 'If the predicted main risk actually occurs once actual_data_available_until >= forecast_for_date, the forecast caution is considered valid. If actuals fall outside the range on the main metric, lower forecast confidence and correct the decision rule.',
                 ],
                 'limitations' => [
-                    'Forecast V1 memakai data historis sampai data_as_of_date, bukan data real-time hari run.',
-                    'Forecast V1 memakai weighted historical trend, belum memasukkan seasonality, campaign change, atau intraday signal.',
-                    'Purchase forecast berpotensi noisy karena sample pembelian biasanya kecil.',
-                    'Forecast adalah baseline deterministic dan risk caution, bukan deterministic GuardrailPolicyEngine trigger dan bukan kepastian outcome.',
+                    'Forecast V1 uses historical data up to data_as_of_date, not real-time data from the run day.',
+                    'Forecast V1 uses weighted historical trend and does not yet include seasonality, campaign changes, or intraday signals.',
+                    'Purchase forecast can be noisy because purchase samples are usually small.',
+                    'Forecast is a deterministic baseline and risk caution, not a deterministic GuardrailPolicyEngine trigger or a guaranteed outcome.',
                 ],
             ],
             'cache' => [
@@ -321,42 +317,42 @@ class TomorrowForecastAgent
     private function mainPredictedRisk(array $riskFlags, array $riskDrivers): string
     {
         if (($riskFlags['retention_risk'] ?? null) === 'at_risk') {
-            return 'D1 retention diprediksi tetap berada pada status at_risk.';
+            return 'D1 retention is predicted to remain at_risk.';
         }
 
         if (($riskFlags['habit_risk'] ?? null) === 'at_risk') {
-            return 'Habit 7D diprediksi belum cukup kuat.';
+            return '7-day habit is predicted to remain weak.';
         }
 
         if (($riskFlags['activation_risk'] ?? null) === 'at_risk') {
-            return 'Aktivasi awal diprediksi belum cukup kuat dari session ke food_add_success.';
+            return 'Early activation is predicted to remain weak from session to food_add_success.';
         }
 
         if (($riskFlags['monetization_sample'] ?? null) === 'low_sample') {
-            return 'Sinyal monetisasi besok diprediksi masih low sample.';
+            return 'Tomorrow monetization signal is predicted to remain low-sample.';
         }
 
-        return $riskDrivers[0] ?? 'Tidak ada risiko utama yang menonjol.';
+        return $riskDrivers[0] ?? 'No dominant main risk stands out.';
     }
 
     private function executiveSummary(?string $forecastForDate, string $predictionStatus, string $mainPredictedRisk, ?string $dataAsOfDate = null, ?string $evaluationReadyAfter = null): string
     {
-        $dateText = $forecastForDate ?: 'tanggal forecast berikutnya';
-        $dataText = $dataAsOfDate ?: 'data terakhir yang tersedia';
-        $evaluationText = $evaluationReadyAfter ?: 'setelah data aktual tanggal forecast tersedia';
+        $dateText = $forecastForDate ?: 'the next forecast date';
+        $dataText = $dataAsOfDate ?: 'the latest available data';
+        $evaluationText = $evaluationReadyAfter ?: 'after actual data for the forecast date is available';
 
-        return 'Forecast untuk ' . $dateText . ' dibuat berdasarkan data sampai ' . $dataText . ', berstatus ' . strtoupper($predictionStatus) . '. Risiko utama: ' . $mainPredictedRisk . ' Evaluasi dapat dilakukan mulai ' . $evaluationText . '.';
+        return 'Forecast for ' . $dateText . ' was generated from data through ' . $dataText . ' with status ' . strtoupper($predictionStatus) . '. Main risk: ' . $mainPredictedRisk . ' Evaluation can start ' . $evaluationText . '.';
     }
 
     private function decisionImpactToday(array $riskFlags, ?string $dataAsOfDate = null, ?string $forecastForDate = null): string
     {
-        $context = 'Forecast ini berbasis data sampai ' . ($dataAsOfDate ?: 'data terakhir tersedia') . ' dan memprediksi ' . ($forecastForDate ?: 'tanggal forecast berikutnya') . '. ';
+        $context = 'This forecast is based on data through ' . ($dataAsOfDate ?: 'the latest available data') . ' and predicts ' . ($forecastForDate ?: 'the next forecast date') . '. ';
 
         if (in_array(($riskFlags['scaling_caution'] ?? ($riskFlags['scaling_guardrail'] ?? null)), ['block_aggressive_scaling', 'block_scaling'], true)) {
-            return $context . 'Forecast memberi risk caution untuk menahan scaling agresif dan fokus pada activation/retention recovery.';
+            return $context . 'The forecast gives a risk caution to avoid aggressive scaling and focus on activation/retention recovery.';
         }
 
-        return $context . 'Forecast tidak memberi caution untuk memblokir eksperimen kecil, tetapi tetap perlu evaluasi aktual ketika data tanggal forecast sudah tersedia.';
+        return $context . 'The forecast does not caution against small experiments, but actuals should still be evaluated once forecast-date data is available.';
     }
 
     private function recommendedPreventiveAction(array $riskFlags): array
@@ -364,28 +360,28 @@ class TomorrowForecastAgent
         if (($riskFlags['retention_risk'] ?? null) === 'at_risk' || ($riskFlags['habit_risk'] ?? null) === 'at_risk') {
             return [
                 'action' => 'Run D1 habit rescue nudge',
-                'target_user_segment' => 'User baru yang sudah food_add_success di D0 tetapi belum log lagi dalam 20-24 jam.',
+                'target_user_segment' => 'New users who completed food_add_success on D0 but have not logged again within 20-24 hours.',
                 'trigger_condition' => 'D0_logged = true AND no_log_next_day_by_18:00',
                 'success_metric' => 'D1 logged rate',
-                'stop_loss_metric' => 'notification opt-out atau app_remove',
+                'stop_loss_metric' => 'notification opt-out or app_remove',
                 'expected_lift' => '+10-15% relative D1 logged rate',
                 'experiment_duration' => '7 days',
-                'minimum_sample_size' => '500 eligible users atau 7 hari, mana yang tercapai lebih dulu',
-                'rollback_condition' => 'Tidak ada uplift D1 setelah sample minimum atau opt-out naik >2 poin.',
+                'minimum_sample_size' => '500 eligible users or 7 days, whichever comes first',
+                'rollback_condition' => 'No D1 uplift after minimum sample or opt-out increases by more than 2 points.',
             ];
         }
 
         if (($riskFlags['activation_risk'] ?? null) === 'at_risk') {
             return [
                 'action' => 'Run first-food-log rescue experiment',
-                'target_user_segment' => 'User baru yang mencapai session/home tetapi belum food_add_success dalam 2 jam.',
+                'target_user_segment' => 'New users who reached session/home but did not complete food_add_success within 2 hours.',
                 'trigger_condition' => 'session_started = true AND food_add_success = false after 2 hours',
                 'success_metric' => 'food_add_success_rate_from_session',
-                'stop_loss_metric' => 'app_remove atau session drop',
-                'expected_lift' => '+5 poin absolut food_add_success_rate_from_session',
+                'stop_loss_metric' => 'app_remove or session drop',
+                'expected_lift' => '+5 absolute points in food_add_success_rate_from_session',
                 'experiment_duration' => '7 days',
                 'minimum_sample_size' => '500 new users',
-                'rollback_condition' => 'food_add_success_rate_from_workspace turun di bawah 80% atau no uplift setelah sample minimum.',
+                'rollback_condition' => 'food_add_success_rate_from_workspace drops below 80% or there is no uplift after the minimum sample.',
             ];
         }
 
