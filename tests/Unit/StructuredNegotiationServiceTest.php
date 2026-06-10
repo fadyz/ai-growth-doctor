@@ -9,7 +9,7 @@ use ReflectionClass;
 
 class StructuredNegotiationServiceTest extends TestCase
 {
-    public function testNegotiationOutputIsSingleRoundAndBuildsConflictMatrix(): void
+    public function testNegotiationOutputIsAdaptiveBoundedAndBuildsConflictMatrix(): void
     {
         $service = new StructuredNegotiationService();
 
@@ -55,11 +55,18 @@ class StructuredNegotiationServiceTest extends TestCase
         ]);
 
         $this->assertSame(1, $output['round']);
-        $this->assertSame(1, $output['rules']['max_rounds']);
-        $this->assertSame('deterministic_single_round', $output['execution']['mode']);
-        $this->assertNotEmpty($output['conflicts']);
-        $this->assertSame(count($output['conflicts']), $output['summary']['total_conflict_count']);
-        $this->assertSame($output['conflicts'], $output['decision_package']['conflict_matrix']);
+        $this->assertSame(3, $output['rules']['max_rounds']);
+        $this->assertSame('deterministic_adaptive_bounded_negotiation', $output['execution']['mode']);
+        $this->assertSame('adaptive_structured_cross_examination', $output['negotiation_type']);
+        $this->assertSame(1, $output['execution']['rounds_completed']);
+        $this->assertTrue($output['execution']['early_exit']);
+        $this->assertSame('no_material_conflicts_remaining', $output['execution']['early_exit_reason']);
+        $this->assertNotEmpty($output['conflict_matrix']);
+        $this->assertSame(0, $output['summary']['material_or_higher_conflict_count']);
+        $this->assertSame($output['conflict_matrix'], $output['decision_package']['conflict_matrix']);
+        $this->assertSame('completed', $output['round_summaries'][0]['status']);
+        $this->assertSame('skipped', $output['round_summaries'][1]['status']);
+        $this->assertSame('skipped', $output['round_summaries'][2]['status']);
         $this->assertNotEmpty($output['negotiation_timeline']);
         $this->assertArrayHasKey('baseline_comparison', $output);
         $this->assertContains('metrics_context.activation_metrics.metrics_7d.food_add_success_rate_from_session', $output['agent_responses'][0]['evidence_refs']);
@@ -153,6 +160,12 @@ class StructuredNegotiationServiceTest extends TestCase
 
         $output = $service->run([
             'metrics_context' => [
+                'activation_metrics' => [
+                    'metrics_7d' => [
+                        'food_add_success_rate_from_session' => 21,
+                        'food_add_success_rate_from_workspace' => 24,
+                    ],
+                ],
                 'retention_metrics' => [
                     'status' => 'warning',
                     'metrics_7d_avg' => [
@@ -178,12 +191,18 @@ class StructuredNegotiationServiceTest extends TestCase
                         'confidence_score' => 70,
                     ],
                 ],
+                'ai_activation_agent' => [
+                    'result' => [
+                        'diagnosis' => 'Activation is weak and below safe threshold.',
+                        'confidence_score' => 82,
+                    ],
+                ],
             ],
         ]);
 
         $conflictIds = array_map(function (array $conflict) {
             return $conflict['conflict_id'];
-        }, $output['conflicts']);
+        }, $output['conflict_matrix']);
 
         $this->assertContains('conflict_ads_scale_vs_retention', $conflictIds);
         $this->assertTrue($output['baseline_comparison']['agent_society']['unsafe_recommendation_prevented']);

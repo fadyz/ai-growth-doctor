@@ -267,15 +267,24 @@ function AgentDetails({ graph, node }) {
 
 function NegotiationDetails({ negotiation }) {
   const rules = negotiation.rules || {};
+  const execution = negotiation.execution || {};
   const baseline = negotiation.baseline_comparison || {};
 
   return (
     <aside className="agd-detail-panel">
-      <h2>Single-Round Structured Negotiation</h2>
+      <h2>Adaptive Structured Negotiation</h2>
       <Section title="Rules">
         <dl className="agd-detail-dl">
           <dt>Max rounds</dt>
-          <dd>{rules.max_rounds ?? 1}</dd>
+          <dd>{rules.max_rounds ?? 3}</dd>
+          <dt>Rounds completed</dt>
+          <dd>{execution.rounds_completed ?? negotiation.rounds_completed ?? negotiation.round ?? 0}</dd>
+          <dt>Early exit</dt>
+          <dd>{String(execution.early_exit ?? false)}</dd>
+          <dt>Early exit reason</dt>
+          <dd>{execution.early_exit_reason || 'No data available'}</dd>
+          <dt>Material conflicts remaining</dt>
+          <dd>{execution.material_or_higher_conflict_count ?? negotiation.summary?.material_or_higher_conflict_count ?? 0}</dd>
           <dt>Raw chain-of-thought allowed</dt>
           <dd>{String(rules.raw_chain_of_thought_allowed ?? false)}</dd>
           <dt>Evidence required</dt>
@@ -283,6 +292,19 @@ function NegotiationDetails({ negotiation }) {
           <dt>Final decision owner</dt>
           <dd>{rules.final_decision_owner || 'FinalDecisionAgent'}</dd>
         </dl>
+      </Section>
+      <Section title="Round Summaries">
+        <div className="agd-evidence-list">
+          {asArray(negotiation.round_summaries).map((round) => (
+            <div className="agd-evidence-item" key={round.round}>
+              <strong>{round.label || `Round ${round.round}`}</strong>
+              <span>
+                {round.status || 'unknown'} · {round.turn_count ?? 0} turns · {round.material_or_higher_conflict_count_after_round ?? 0} material+ remaining
+                {round.skip_reason ? ` · ${round.skip_reason}` : ''}
+              </span>
+            </div>
+          ))}
+        </div>
       </Section>
       <Section title="Negotiation Timeline">
         <NegotiationTimeline items={negotiation.negotiation_timeline} />

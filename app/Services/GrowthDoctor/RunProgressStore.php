@@ -42,6 +42,16 @@ class RunProgressStore
 
     public function latestCompletedResult(): ?array
     {
+        $latest = $this->latestCompletedRunId();
+
+        if ($latest) {
+            $run = $this->get($latest);
+
+            if (($run['status'] ?? null) === 'done' && !empty($run['result']) && is_array($run['result'])) {
+                return $this->dashboardResult($run['result']);
+            }
+        }
+
         $directory = 'ai-growth-doctor/runs';
 
         if (!Storage::disk('local')->exists($directory)) {
@@ -54,40 +64,53 @@ class RunProgressStore
             return null;
         }
 
-        $completedRuns = [];
+        usort($files, function (string $a, string $b) {
+            return strcmp(basename($b), basename($a));
+        });
+
+        $latestRunFile = null;
 
         foreach ($files as $file) {
-            if (!str_ends_with($file, '.json')) {
-                continue;
+            if (substr($file, -5) === '.json') {
+                $latestRunFile = $file;
+                break;
             }
-
-            $json = Storage::disk('local')->get($file);
-            $run = json_decode($json, true);
-
-            if (!is_array($run)) {
-                continue;
-            }
-
-            if (($run['status'] ?? null) !== 'done') {
-                continue;
-            }
-
-            if (empty($run['result']) || !is_array($run['result'])) {
-                continue;
-            }
-
-            $completedRuns[] = $run;
         }
 
-        if (empty($completedRuns)) {
+        if (!$latestRunFile) {
             return null;
         }
 
-        usort($completedRuns, function ($a, $b) {
-            return strcmp((string) ($b['updated_at'] ?? ''), (string) ($a['updated_at'] ?? ''));
-        });
+        $run = json_decode(Storage::disk('local')->get($latestRunFile), true);
 
-        return $completedRuns[0]['result'];
+        if (($run['status'] ?? null) !== 'done' || empty($run['result']) || !is_array($run['result'])) {
+            return null;
+        }
+
+        return $this->dashboardResult($run['result']);
+    }
+
+    public function getStatus(string $runId): ?array
+    {
+        $status = $this->getStatusFromIndex($runId);
+
+        if ($status) {
+            return $status;
+        }
+
+        $headerStatus = $this->getStatusFromRunHeader($runId);
+
+        if ($headerStatus) {
+            return $headerStatus;
+        }
+
+        $run = $this->get($runId);
+
+        if (!$run) {
+            return null;
+        }
+
+        return $this->statusPayload($runId, $run);
     }
 
     public function markRunning(string $runId, string $stepKey, ?string $note = null): array
@@ -262,11 +285,153 @@ class RunProgressStore
             $this->path($runId),
             json_encode($run, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE)
         );
+
+        $this->putStatus($runId, $run);
+
+        if (($run['status'] ?? null) === 'done') {
+            $this->putLatestCompleted($runId, $run);
+        }
     }
 
     private function path(string $runId): string
     {
         return 'ai-growth-doctor/runs/' . $runId . '.json';
+    }
+
+    private function statusPath(string $runId): string
+    {
+        return 'ai-growth-doctor/run-status/' . $runId . '.json';
+    }
+
+    private function latestCompletedPath(): string
+    {
+        return 'ai-growth-doctor/latest_completed.json';
+    }
+
+    private function putStatus(string $runId, array $run): void
+    {
+        Storage::disk('local')->put(
+            $this->statusPath($runId),
+            json_encode($this->statusPayload($runId, $run), JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE)
+        );
+    }
+
+    private function getStatusFromIndex(string $runId): ?array
+    {
+        $path = $this->statusPath($runId);
+
+        if (!Storage::disk('local')->exists($path)) {
+            return null;
+        }
+
+        $data = json_decode(Storage::disk('local')->get($path), true);
+
+        return is_array($data) ? $data : null;
+    }
+
+    private function getStatusFromRunHeader(string $runId): ?array
+    {
+        $path = storage_path('app/' . $this->path($runId));
+
+        if (!is_file($path)) {
+            return null;
+        }
+
+        $handle = fopen($path, 'rb');
+
+        if (!$handle) {
+            return null;
+        }
+
+        $chunk = fread($handle, 65536);
+        fclose($handle);
+
+        if ($chunk === false || $chunk === '') {
+            return null;
+        }
+
+        $extract = function (string $key) use ($chunk): ?string {
+            return preg_match('/"' . preg_quote($key, '/') . '"\s*:\s*"([^"]*)"/', $chunk, $matches) === 1
+                ? $matches[1]
+                : null;
+        };
+
+        $progress = preg_match('/"progress_percent"\s*:\s*([0-9]+)/', $chunk, $progressMatch) === 1
+            ? (int) $progressMatch[1]
+            : 0;
+
+        return [
+            'run_id' => $extract('run_id') ?? $runId,
+            'status' => $extract('status') ?? 'unknown',
+            'created_at' => $extract('created_at'),
+            'updated_at' => $extract('updated_at'),
+            'current_step' => $extract('current_step'),
+            'progress_percent' => $progress,
+            'steps' => [],
+            'error' => null,
+            'note' => $extract('note'),
+            'has_result' => strpos($chunk, '"result"') !== false,
+        ];
+    }
+
+    private function statusPayload(string $runId, array $run): array
+    {
+        return [
+            'run_id' => $run['run_id'] ?? $runId,
+            'status' => $run['status'] ?? 'unknown',
+            'created_at' => $run['created_at'] ?? null,
+            'updated_at' => $run['updated_at'] ?? null,
+            'current_step' => $run['current_step'] ?? null,
+            'progress_percent' => $run['progress_percent'] ?? 0,
+            'steps' => $run['steps'] ?? [],
+            'error' => $run['error'] ?? null,
+            'note' => $run['note'] ?? null,
+            'has_result' => !empty($run['result']),
+        ];
+    }
+
+    private function putLatestCompleted(string $runId, array $run): void
+    {
+        Storage::disk('local')->put(
+            $this->latestCompletedPath(),
+            json_encode([
+                'run_id' => $runId,
+                'updated_at' => $run['updated_at'] ?? $this->now(),
+                'result_path' => $this->path($runId),
+            ], JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE)
+        );
+    }
+
+    private function latestCompletedRunId(): ?string
+    {
+        $path = $this->latestCompletedPath();
+
+        if (!Storage::disk('local')->exists($path)) {
+            return null;
+        }
+
+        $data = json_decode(Storage::disk('local')->get($path), true);
+
+        return is_array($data) ? ($data['run_id'] ?? null) : null;
+    }
+
+    private function dashboardResult(array $result): array
+    {
+        if (!isset($result['compact_summary_payload']) || !is_array($result['compact_summary_payload'])) {
+            return $result;
+        }
+
+        $compact = $result['compact_summary_payload'];
+
+        if (isset($result['decision_package'])) {
+            $compact['decision_package'] = $result['decision_package'];
+        }
+
+        if (isset($result['full_audit_trace'])) {
+            $compact['full_audit_trace'] = $result['full_audit_trace'];
+        }
+
+        return $compact;
     }
 
     private function calculateProgress(array $run): int
@@ -312,7 +477,7 @@ class RunProgressStore
             'request_duration_ms' => $execution['request_duration_ms'] ?? null,
         ];
 
-        foreach (['max_rounds', 'agent_response_count', 'conflict_count', 'total_conflict_count', 'material_conflict_count', 'critical_conflict_count', 'material_or_higher_conflict_count'] as $key) {
+        foreach (['max_rounds', 'rounds_completed', 'early_exit', 'early_exit_reason', 'agent_response_count', 'conflict_count', 'total_conflict_count', 'material_conflict_count', 'critical_conflict_count', 'material_or_higher_conflict_count'] as $key) {
             if (array_key_exists($key, $execution)) {
                 $normalized[$key] = $execution[$key];
             }
@@ -329,19 +494,20 @@ class RunProgressStore
             return null;
         }
 
-        if (($result['negotiation_type'] ?? null) === 'single_round_structured_cross_examination') {
+        if (in_array($result['negotiation_type'] ?? null, ['adaptive_structured_cross_examination', 'single_round_structured_cross_examination'], true)) {
             $summary = $result['summary'] ?? [];
             $total = (int) ($summary['total_conflict_count'] ?? count($result['conflicts'] ?? []));
             $critical = (int) ($summary['critical_conflict_count'] ?? 0);
             $material = (int) ($summary['material_conflict_count'] ?? 0);
+            $roundsCompleted = $result['execution']['rounds_completed'] ?? ($result['rounds_completed'] ?? null);
 
             if ($total === 0) {
-                return '0 conflicts detected; no material objection';
+                return ($roundsCompleted ? $roundsCompleted . ' round(s); ' : '') . '0 conflicts detected; no material objection';
             }
 
             $conflictLabel = $total === 1 ? 'conflict' : 'conflicts';
 
-            return $total . ' ' . $conflictLabel . ' detected: ' . $critical . ' critical, ' . $material . ' material';
+            return ($roundsCompleted ? $roundsCompleted . ' round(s); ' : '') . $total . ' ' . $conflictLabel . ' detected: ' . $critical . ' critical, ' . $material . ' material';
         }
 
         if (!empty($result['status'])) {

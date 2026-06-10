@@ -181,17 +181,60 @@ class AiGrowthDoctorGraphBuilder
     {
         $summary = $negotiation['summary'] ?? [];
         $execution = $negotiation['execution'] ?? [];
+        $roundSummaries = $negotiation['round_summaries'] ?? [];
+        $materialOrHigherConflictCount = (int) ($summary['material_or_higher_conflict_count']
+            ?? ($execution['material_or_higher_conflict_count'] ?? 0));
+        $maxRounds = (int) ($negotiation['rules']['max_rounds'] ?? ($execution['max_rounds'] ?? 1));
+        $completedRoundCount = (int) ($execution['rounds_completed'] ?? ($negotiation['rounds_completed'] ?? ($negotiation['round'] ?? 0)));
+        $completedRoundCount = !empty($negotiation) ? max(1, min($completedRoundCount, $maxRounds)) : 0;
+        $rounds = !empty($roundSummaries)
+            ? array_map(function (array $round) {
+                return [
+                    'label' => 'Round ' . ($round['round'] ?? '?'),
+                    'name' => $round['purpose'] ?? $this->roundPurpose((int) ($round['round'] ?? 0)),
+                    'status' => $round['status'] ?? 'skipped',
+                    'turnCount' => $round['turn_count'] ?? 0,
+                    'materialOrHigherConflictCountAfterRound' => $round['material_or_higher_conflict_count_after_round'] ?? 0,
+                    'skipReason' => $round['skip_reason'] ?? null,
+                ];
+            }, $roundSummaries)
+            : [
+                [
+                    'label' => 'Round 1',
+                    'name' => 'Objection / Support',
+                    'status' => $completedRoundCount >= 1 ? 'completed' : 'skipped',
+                ],
+                [
+                    'label' => 'Round 2',
+                    'name' => 'Revision / Rebuttal',
+                    'status' => $completedRoundCount >= 2 ? 'completed' : 'skipped',
+                ],
+                [
+                    'label' => 'Round 3',
+                    'name' => 'Escalation Only',
+                    'status' => $completedRoundCount >= 3 ? 'completed' : 'skipped',
+                ],
+            ];
 
         return [
             'id' => $id,
             'type' => 'negotiationNode',
             'position' => ['x' => $x, 'y' => $y],
             'data' => [
-                'title' => 'Single-Round Structured Negotiation',
-                'maxRounds' => $negotiation['rules']['max_rounds'] ?? ($execution['max_rounds'] ?? 1),
+                'title' => 'Structured Negotiation Layer',
+                'maxRounds' => $maxRounds,
+                'rounds' => $rounds,
+                'earlyExit' => [
+                    'label' => 'Early Exit',
+                    'condition' => 'material_or_higher_conflict_count = ' . $materialOrHigherConflictCount,
+                    'status' => !empty($execution['early_exit']) ? 'clear' : ($materialOrHigherConflictCount === 0 ? 'clear' : 'blocked'),
+                    'reason' => $execution['early_exit_reason'] ?? null,
+                ],
                 'totalConflictCount' => $summary['total_conflict_count'] ?? ($execution['total_conflict_count'] ?? count($negotiation['conflicts'] ?? [])),
                 'materialConflictCount' => $summary['material_conflict_count'] ?? ($execution['material_conflict_count'] ?? 0),
                 'criticalConflictCount' => $summary['critical_conflict_count'] ?? ($execution['critical_conflict_count'] ?? 0),
+                'materialOrHigherConflictCount' => $materialOrHigherConflictCount,
+                'completedRoundCount' => $completedRoundCount,
                 'agentResponseCount' => $execution['agent_response_count'] ?? count($negotiation['agent_responses'] ?? []),
                 'resultSummary' => $summary['recommended_next_step'] ?? 'Conflict matrix prepared',
                 'status' => !empty($negotiation) ? 'done' : 'empty',
@@ -215,6 +258,15 @@ class AiGrowthDoctorGraphBuilder
                 'detailKey' => 'final_decision',
             ],
         ];
+    }
+
+    private function roundPurpose(int $round): string
+    {
+        return [
+            1 => 'Objection / Support / Risk Warning',
+            2 => 'Revision / Rebuttal',
+            3 => 'Escalation Only',
+        ][$round] ?? 'Structured negotiation';
     }
 
     private function outputNode(string $id, int $x, int $y, array $simulator): array
@@ -245,7 +297,7 @@ class AiGrowthDoctorGraphBuilder
 
         foreach ($specialists as $specialist) {
             $edges[] = $this->edge('guardrail-to-' . $specialist, 'guardrail_context', $specialist, 'specialist analysis', 'agent-edge');
-            $edges[] = $this->edge($specialist . '-to-negotiation', $specialist, 'structured_negotiation', 'single-round negotiation', 'negotiation-edge');
+            $edges[] = $this->edge($specialist . '-to-negotiation', $specialist, 'structured_negotiation', 'structured negotiation', 'negotiation-edge');
         }
 
         $edges[] = $this->edge('negotiation-to-orchestrator', 'structured_negotiation', 'orchestrator_evidence_assembly', 'decision package', 'decision-edge');

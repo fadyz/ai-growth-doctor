@@ -20,36 +20,109 @@ class StructuredNegotiationService
         $guardrailResult = $context['guardrail_result'] ?? $metricsContext['guardrail_policy'] ?? [];
         $forecastEvaluation = $context['forecast_evaluation'] ?? $context['forecast_evaluations'] ?? [];
         $calibrationMemory = $context['calibration_memory'] ?? $context['forecast_model_calibration'] ?? [];
+        $maxRounds = min(max((int) ($context['max_rounds'] ?? 3), 1), 3);
 
         $standardOutputs = $this->standardizeSpecialistOutputs($specialistOutputs, $metricsContext, $guardrailResult);
         $signals = $this->extractSignals($metricsContext, $guardrailResult, $standardOutputs, $forecastEvaluation, $calibrationMemory);
-        $agentResponses = $this->normalizeAgentResponses($this->buildAgentResponses($standardOutputs, $signals, $metricsContext));
-        $conflicts = $this->buildConflicts($signals, $agentResponses, $metricsContext);
 
-        if ($this->isMockProvider() && empty($conflicts)) {
-            return $this->mockDemoNegotiation($standardOutputs, $metricsContext);
+        $turns = [];
+        $roundSummaries = [];
+        $conflictMatrix = [];
+        $revisedRecommendations = [];
+        $roundsCompleted = 0;
+        $materialConflictCount = 0;
+        $earlyExit = false;
+        $earlyExitReason = null;
+
+        for ($round = 1; $round <= $maxRounds; $round++) {
+            $roundTurns = $this->buildRoundTurns($round, $standardOutputs, $guardrailResult, $turns, $conflictMatrix, $revisedRecommendations, $signals, $metricsContext);
+
+            if (empty($roundTurns)) {
+                $roundSummaries[] = $this->buildRoundSummary($round, 'skipped', [], $materialConflictCount, 'No turns generated');
+                continue;
+            }
+
+            $turns = array_merge($turns, $roundTurns);
+            $newRevisions = $this->extractRevisions($roundTurns);
+
+            if (!empty($newRevisions)) {
+                $revisedRecommendations = array_merge($revisedRecommendations, $newRevisions);
+            }
+
+            $conflictMatrix = $this->buildConflictMatrix($turns, $standardOutputs, $revisedRecommendations);
+            $materialConflictCount = $this->countUnresolvedMaterialOrHigher($conflictMatrix);
+            $roundsCompleted = $round;
+            $roundSummaries[] = $this->buildRoundSummary($round, 'completed', $roundTurns, $materialConflictCount, null);
+
+            if ($materialConflictCount === 0) {
+                $earlyExit = true;
+                $earlyExitReason = 'no_material_conflicts_remaining';
+                break;
+            }
+
+            if ($this->hasNoNewEvidence($roundTurns, $turns)) {
+                $earlyExit = true;
+                $earlyExitReason = 'no_new_evidence';
+                break;
+            }
         }
 
-        $summary = $this->summarizeNegotiation($agentResponses, $conflicts);
+        for ($round = count($roundSummaries) + 1; $round <= $maxRounds; $round++) {
+            $roundSummaries[] = $this->buildRoundSummary(
+                $round,
+                'skipped',
+                [],
+                $materialConflictCount,
+                $earlyExit ? 'Early Exit: material_or_higher_conflict_count = ' . $materialConflictCount : 'Not executed'
+            );
+        }
+
+        $agentResponses = $this->turnsToAgentResponses($turns);
+        $summary = $this->summarizeNegotiation($agentResponses, $conflictMatrix);
+        $summary['total_conflict_count'] = count($conflictMatrix);
+        $summary['material_conflict_count'] = count(array_filter($conflictMatrix, function (array $conflict) {
+            return ($conflict['severity'] ?? null) === 'material' && ($conflict['status'] ?? 'open') !== 'resolved';
+        }));
+        $summary['critical_conflict_count'] = count(array_filter($conflictMatrix, function (array $conflict) {
+            return ($conflict['severity'] ?? null) === 'critical' && ($conflict['status'] ?? 'open') !== 'resolved';
+        }));
+        $summary['material_or_higher_conflict_count'] = $materialConflictCount;
         $timeline = $this->buildNegotiationTimeline($agentResponses);
+        $execution = $this->buildExecutionSummary($agentResponses, $conflictMatrix, $summary, $maxRounds, $roundsCompleted, $earlyExit, $earlyExitReason);
+        $safeContextRefs = [
+            'app_profile' => $this->safeKeys($metricsContext['app_profile'] ?? [], ['app_id', 'app_name', 'app_category', 'core_action_name', 'core_action_success_label', 'monetization_model', 'data_mode']),
+            'mapping_validation' => $this->safeKeys($metricsContext['mapping_validation'] ?? [], ['status', 'mapped_metric_count', 'required_metric_count', 'missing_required_metrics', 'missing_optional_metrics', 'low_sample_warnings']),
+            'guardrail_policy' => $this->safeKeys($guardrailResult, ['policy_version', 'winning_guardrail', 'triggered_guardrails', 'deterministic_decision']),
+            'forecast_evaluation' => $this->safeKeys($forecastEvaluation, ['status', 'actual_data_available_until', 'evaluated_count', 'pending_count']),
+            'calibration_memory' => $this->safeKeys($calibrationMemory, ['status', 'evaluations_used', 'overall_mature_hit_rate', 'trust_score', 'decision_instruction']),
+        ];
 
         return [
-            'round' => 1,
-            'negotiation_type' => 'single_round_structured_cross_examination',
-            'execution' => $this->buildExecutionSummary($agentResponses, $conflicts, $summary),
+            'round' => $roundsCompleted,
+            'rounds_completed' => $roundsCompleted,
+            'negotiation_type' => 'adaptive_structured_cross_examination',
+            'execution' => $execution,
             'rules' => [
-                'max_rounds' => 1,
+                'max_rounds' => $maxRounds,
+                'early_exit_enabled' => true,
                 'raw_chain_of_thought_allowed' => false,
                 'evidence_required_for_objection' => true,
+                'evidence_bound_objections' => true,
+                'no_free_form_debate' => true,
                 'final_decision_owner' => 'FinalDecisionAgent',
             ],
             'specialist_output_summaries' => array_values($standardOutputs),
             'agent_responses' => $agentResponses,
             'negotiation_timeline' => $timeline,
-            'conflicts' => $conflicts,
-            'baseline_comparison' => $this->buildBaselineComparison($agentResponses, $conflicts),
+            'round_summaries' => $roundSummaries,
+            'negotiation_transcript' => $turns,
+            'conflict_matrix' => $conflictMatrix,
+            'conflicts' => $conflictMatrix,
+            'revised_recommendations' => $revisedRecommendations,
+            'graph' => $this->buildNegotiationGraph($roundSummaries, $turns, $execution),
+            'baseline_comparison' => $this->buildBaselineComparison($agentResponses, $conflictMatrix),
             'decision_package' => [
-                'conflict_matrix' => $conflicts,
+                'conflict_matrix' => $conflictMatrix,
                 'total_conflict_count' => $summary['total_conflict_count'],
                 'material_conflict_count' => $summary['material_conflict_count'],
                 'critical_conflict_count' => $summary['critical_conflict_count'],
@@ -57,13 +130,17 @@ class StructuredNegotiationService
                 'material_responses' => array_values(array_filter($agentResponses, function (array $response) {
                     return in_array($response['severity'] ?? 'none', ['material', 'critical'], true);
                 })),
-                'safe_context_refs' => [
-                    'app_profile' => $this->safeKeys($metricsContext['app_profile'] ?? [], ['app_id', 'app_name', 'app_category', 'core_action_name', 'core_action_success_label', 'monetization_model', 'data_mode']),
-                    'mapping_validation' => $this->safeKeys($metricsContext['mapping_validation'] ?? [], ['status', 'mapped_metric_count', 'required_metric_count', 'missing_required_metrics', 'missing_optional_metrics', 'low_sample_warnings']),
-                    'guardrail_policy' => $this->safeKeys($guardrailResult, ['policy_version', 'winning_guardrail', 'triggered_guardrails', 'deterministic_decision']),
-                    'forecast_evaluation' => $this->safeKeys($forecastEvaluation, ['status', 'actual_data_available_until', 'evaluated_count', 'pending_count']),
-                    'calibration_memory' => $this->safeKeys($calibrationMemory, ['status', 'evaluations_used', 'overall_mature_hit_rate', 'trust_score', 'decision_instruction']),
-                ],
+                'safe_context_refs' => $safeContextRefs,
+            ],
+            'orchestrator_package' => [
+                'specialist_outputs' => array_values($standardOutputs),
+                'negotiation_transcript' => $turns,
+                'conflict_matrix' => $conflictMatrix,
+                'revised_recommendations' => $revisedRecommendations,
+                'round_summaries' => $roundSummaries,
+                'early_exit_reason' => $earlyExitReason,
+                'rounds_completed' => $roundsCompleted,
+                'material_or_higher_conflict_count' => $materialConflictCount,
             ],
             'summary' => $summary,
         ];
@@ -104,6 +181,392 @@ class StructuredNegotiationService
         }
 
         return $responses;
+    }
+
+    private function buildRoundTurns(
+        int $round,
+        array $specialistOutputs,
+        array $guardrailContext,
+        array $previousTurns,
+        array $conflictMatrix,
+        array $revisedRecommendations,
+        array $signals,
+        array $metricsContext
+    ): array {
+        if ($round === 1) {
+            return $this->buildRoundOneTurns($specialistOutputs, $signals, $metricsContext);
+        }
+
+        if ($round === 2) {
+            if ($this->countUnresolvedMaterialOrHigher($conflictMatrix) === 0) {
+                return [];
+            }
+
+            return $this->buildRoundTwoTurns($specialistOutputs, $conflictMatrix, $metricsContext);
+        }
+
+        if ($round === 3) {
+            if ($this->countUnresolvedMaterialOrHigher($conflictMatrix) === 0) {
+                return [];
+            }
+
+            return $this->buildRoundThreeTurns($conflictMatrix, $metricsContext);
+        }
+
+        return [];
+    }
+
+    private function buildRoundOneTurns(array $standardOutputs, array $signals, array $metricsContext): array
+    {
+        $responses = $this->normalizeAgentResponses($this->buildAgentResponses($standardOutputs, $signals, $metricsContext));
+
+        return $this->normalizeTurns(array_map(function (array $response) {
+            return $this->turnFromResponse(1, $this->agentIdFromName($response['agent_name'] ?? null) ?? 'specialist_agent', $response);
+        }, $responses));
+    }
+
+    private function buildRoundTwoTurns(array $standardOutputs, array $conflictMatrix, array $metricsContext): array
+    {
+        $turns = [];
+
+        foreach ($conflictMatrix as $conflict) {
+            if (!in_array($conflict['severity'] ?? 'none', ['material', 'critical'], true) || ($conflict['status'] ?? 'open') === 'resolved') {
+                continue;
+            }
+
+            $revisionAgent = $this->revisionAgentForConflict($conflict, $standardOutputs);
+            $resolution = $conflict['resolution_candidate'] ?? 'Revise the recommendation to respect the material evidence and guardrail constraints.';
+            $turns[] = $this->normalizeTurn([
+                'turn_id' => 'r2_' . $revisionAgent['id'] . '_revision_' . substr(sha1($conflict['conflict_id'] ?? $conflict['topic'] ?? 'conflict'), 0, 8),
+                'round' => 2,
+                'from_agent_id' => $revisionAgent['id'],
+                'from_agent_name' => $revisionAgent['name'],
+                'target_agent_id' => 'structured_negotiation',
+                'target_agent_name' => 'Structured Negotiation Layer',
+                'type' => 'revised_recommendation',
+                'severity' => 'none',
+                'claim' => 'Recommendation revised after material conflict review: ' . ($conflict['topic'] ?? $conflict['title'] ?? 'material conflict'),
+                'evidence' => array_values(array_filter(array_merge(
+                    ['structured_negotiation.conflict_matrix.' . ($conflict['conflict_id'] ?? 'unresolved')],
+                    $conflict['evidence'] ?? [],
+                    $conflict['evidence_summary'] ?? []
+                ))),
+                'requested_change' => $resolution,
+                'revised_recommendation' => $resolution,
+                'status' => 'resolved',
+            ]);
+        }
+
+        return $turns;
+    }
+
+    private function buildRoundThreeTurns(array $conflictMatrix, array $metricsContext): array
+    {
+        $turns = [];
+
+        foreach ($conflictMatrix as $conflict) {
+            if (!in_array($conflict['severity'] ?? 'none', ['material', 'critical'], true) || ($conflict['status'] ?? 'open') === 'resolved') {
+                continue;
+            }
+
+            $turns[] = $this->normalizeTurn([
+                'turn_id' => 'r3_final_decision_escalation_' . substr(sha1($conflict['conflict_id'] ?? 'conflict'), 0, 8),
+                'round' => 3,
+                'from_agent_id' => 'structured_negotiation',
+                'from_agent_name' => 'Structured Negotiation Layer',
+                'target_agent_id' => 'final_decision_agent',
+                'target_agent_name' => 'Final Decision Agent',
+                'type' => 'escalation',
+                'severity' => $conflict['severity'] ?? 'material',
+                'claim' => 'Unresolved material conflict requires Final Decision Agent escalation: ' . ($conflict['title'] ?? $conflict['topic'] ?? 'conflict'),
+                'evidence' => $conflict['evidence'] ?? ($conflict['evidence_summary'] ?? ['conflict_matrix.' . ($conflict['conflict_id'] ?? 'unknown')]),
+                'requested_change' => 'Resolve conflict without violating deterministic guardrails.',
+                'revised_recommendation' => null,
+                'status' => 'open',
+            ]);
+        }
+
+        return $turns;
+    }
+
+    private function turnFromResponse(int $round, string $fromAgentId, array $response, string $status = 'open'): array
+    {
+        $targetName = $response['target_agent'] ?? null;
+
+        return $this->normalizeTurn([
+            'turn_id' => 'r' . $round . '_' . $fromAgentId . '_' . ($response['response_type'] ?? 'response'),
+            'round' => $round,
+            'from_agent_id' => $fromAgentId,
+            'from_agent_name' => $response['agent_name'] ?? 'Unknown Agent',
+            'target_agent_id' => $this->agentIdFromName($targetName),
+            'target_agent_name' => $targetName,
+            'type' => $response['response_type'] ?? 'no_material_objection',
+            'severity' => $response['severity'] ?? 'none',
+            'claim' => $response['claim'] ?? '',
+            'evidence' => $response['evidence_refs'] ?? [],
+            'requested_change' => $response['revised_recommendation'] ?? null,
+            'revised_recommendation' => $response['revised_recommendation'] ?? null,
+            'status' => $status,
+        ]);
+    }
+
+    private function normalizeTurns(array $turns): array
+    {
+        return array_values(array_map(function (array $turn) {
+            return $this->normalizeTurn($turn);
+        }, $turns));
+    }
+
+    private function normalizeTurn(array $turn): array
+    {
+        $evidence = $turn['evidence'] ?? [];
+        if (!is_array($evidence)) {
+            $evidence = [$evidence];
+        }
+
+        $evidence = array_values(array_filter($evidence, function ($item) {
+            return trim((string) $item) !== '';
+        }));
+
+        if (in_array($turn['type'] ?? '', ['objection', 'risk_warning', 'escalation', 'final_warning'], true) && empty($evidence)) {
+            $turn['type'] = 'no_material_objection';
+            $turn['severity'] = 'none';
+            $turn['claim'] = 'No material evidence-based objection from this specialist output.';
+        }
+
+        $turn['evidence'] = empty($evidence) ? ['specialist_output_summary'] : $evidence;
+
+        return $turn;
+    }
+
+    private function buildConflictMatrix(array $turns, array $specialistOutputs, array $revisedRecommendations): array
+    {
+        $responses = $this->turnsToAgentResponses($turns);
+        $conflicts = $this->buildConflicts([], $responses, []);
+
+        return array_values(array_map(function (array $conflict) use ($revisedRecommendations) {
+            $resolvedBy = $this->resolvedByRevision($conflict, $revisedRecommendations);
+
+            return $conflict + [
+                'title' => $conflict['topic'] ?? $conflict['conflict_id'] ?? 'Material conflict',
+                'evidence' => $conflict['evidence_summary'] ?? [],
+                'status' => $resolvedBy ? 'resolved' : 'open',
+                'resolved_by_round' => $resolvedBy,
+            ];
+        }, $conflicts));
+    }
+
+    private function countUnresolvedMaterialOrHigher(array $conflictMatrix): int
+    {
+        return count(array_filter($conflictMatrix, function (array $conflict) {
+            return in_array($conflict['severity'] ?? 'none', ['material', 'critical'], true)
+                && ($conflict['status'] ?? 'open') !== 'resolved';
+        }));
+    }
+
+    private function buildRoundSummary(int $round, string $status, array $turns, int $materialConflictCount, ?string $skipReason): array
+    {
+        $labels = [
+            1 => ['Round 1: Objection / Support', 'Objection / Support / Risk Warning'],
+            2 => ['Round 2: Revision / Rebuttal', 'Revision / Rebuttal'],
+            3 => ['Round 3: Escalation Only', 'Escalation Only'],
+        ];
+
+        return [
+            'round' => $round,
+            'label' => $labels[$round][0] ?? ('Round ' . $round),
+            'purpose' => $labels[$round][1] ?? 'Structured negotiation',
+            'status' => $status,
+            'turn_count' => count($turns),
+            'turn_ids' => array_values(array_map(function (array $turn) {
+                return $turn['turn_id'] ?? null;
+            }, $turns)),
+            'material_or_higher_conflict_count_after_round' => $materialConflictCount,
+            'skip_reason' => $skipReason,
+        ];
+    }
+
+    private function extractRevisions(array $roundTurns): array
+    {
+        return array_values(array_filter($roundTurns, function (array $turn) {
+            return ($turn['type'] ?? null) === 'revised_recommendation';
+        }));
+    }
+
+    private function revisionAgentForConflict(array $conflict, array $standardOutputs): array
+    {
+        $text = strtolower(json_encode([
+            $conflict['conflict_id'] ?? '',
+            $conflict['topic'] ?? '',
+            $conflict['agents_involved'] ?? [],
+            $conflict['initial_position'] ?? '',
+            $conflict['counter_position'] ?? '',
+        ]));
+
+        $preferred = [
+            'ads' => ['id' => 'ads_agent', 'key' => 'ai_ads_agent', 'name' => 'Ads Agent'],
+            'acquisition' => ['id' => 'ads_agent', 'key' => 'ai_ads_agent', 'name' => 'Ads Agent'],
+            'budget' => ['id' => 'ads_agent', 'key' => 'ai_ads_agent', 'name' => 'Ads Agent'],
+            'paywall' => ['id' => 'monetization_agent', 'key' => 'ai_monetization_agent', 'name' => 'Monetization Agent'],
+            'monetization' => ['id' => 'monetization_agent', 'key' => 'ai_monetization_agent', 'name' => 'Monetization Agent'],
+            'forecast' => ['id' => 'tomorrow_forecast_agent', 'key' => 'ai_tomorrow_forecast_agent', 'name' => 'Tomorrow Forecast Agent'],
+            'rollout' => ['id' => 'version_agent', 'key' => 'ai_version_agent', 'name' => 'Version Agent'],
+            'release' => ['id' => 'version_agent', 'key' => 'ai_version_agent', 'name' => 'Version Agent'],
+        ];
+
+        foreach ($preferred as $needle => $agent) {
+            if (strpos($text, $needle) !== false && isset($standardOutputs[$agent['key']])) {
+                return ['id' => $agent['id'], 'name' => $standardOutputs[$agent['key']]['agent_name'] ?? $agent['name']];
+            }
+        }
+
+        return ['id' => 'structured_negotiation', 'name' => 'Structured Negotiation Layer'];
+    }
+
+    private function resolvedByRevision(array $conflict, array $revisedRecommendations): ?int
+    {
+        if (empty($revisedRecommendations)) {
+            return null;
+        }
+
+        $conflictText = strtolower(json_encode([
+            $conflict['conflict_id'] ?? '',
+            $conflict['topic'] ?? '',
+            $conflict['agents_involved'] ?? [],
+            $conflict['resolution_candidate'] ?? '',
+        ]));
+
+        foreach ($revisedRecommendations as $revision) {
+            $revisionText = strtolower(json_encode([
+                $revision['from_agent_name'] ?? '',
+                $revision['claim'] ?? '',
+                $revision['revised_recommendation'] ?? '',
+                $revision['evidence'] ?? [],
+            ]));
+
+            if ($this->revisionAddressesConflict($conflictText, $revisionText)) {
+                return (int) ($revision['round'] ?? 2);
+            }
+        }
+
+        return null;
+    }
+
+    private function revisionAddressesConflict(string $conflictText, string $revisionText): bool
+    {
+        $domains = [
+            ['ads', 'acquisition', 'budget', 'scale', 'scaling'],
+            ['paywall', 'monetization', 'purchase', 'revenue'],
+            ['forecast', 'calibration', 'directional'],
+            ['rollout', 'release', 'version'],
+            ['activation', 'retention', 'habit'],
+        ];
+
+        foreach ($domains as $domainTerms) {
+            if ($this->containsAny($conflictText, $domainTerms) && $this->containsAny($revisionText, $domainTerms)) {
+                return true;
+            }
+        }
+
+        return $this->containsAny($revisionText, ['revise', 'revised', 'hold', 'avoid', 'defer', 'wait', 'segment', 'guardrail', 'resolve']);
+    }
+
+    private function turnsToAgentResponses(array $turns): array
+    {
+        return array_values(array_map(function (array $turn) {
+            return [
+                'agent_name' => $turn['from_agent_name'] ?? 'Unknown Agent',
+                'target_agent' => $turn['target_agent_name'] ?? 'Final Decision Agent',
+                'response_type' => $turn['type'] ?? 'no_material_objection',
+                'severity' => $turn['severity'] ?? 'none',
+                'claim' => $turn['claim'] ?? '',
+                'evidence_refs' => $turn['evidence'] ?? [],
+                'revised_recommendation' => $turn['revised_recommendation'] ?? null,
+                'confidence' => 'medium',
+                'round' => $turn['round'] ?? null,
+                'turn_id' => $turn['turn_id'] ?? null,
+                'status' => $turn['status'] ?? 'open',
+            ];
+        }, $turns));
+    }
+
+    private function hasNoNewEvidence(array $roundTurns, array $allTurns): bool
+    {
+        if (empty($roundTurns)) {
+            return true;
+        }
+
+        return false;
+    }
+
+    private function agentIdFromName(?string $agentName): ?string
+    {
+        $map = [
+            'Activation Agent' => 'activation_agent',
+            'Retention Agent' => 'retention_agent',
+            'Monetization Agent' => 'monetization_agent',
+            'Version Agent' => 'version_agent',
+            'Ads Agent' => 'ads_agent',
+            'Tomorrow Forecast Agent' => 'tomorrow_forecast_agent',
+            'Final Decision Agent' => 'final_decision_agent',
+            'Structured Negotiation Layer' => 'structured_negotiation',
+        ];
+
+        return $map[$agentName] ?? null;
+    }
+
+    private function buildNegotiationGraph(array $roundSummaries, array $turns, array $execution): array
+    {
+        return [
+            'meta' => [
+                'max_rounds' => $execution['max_rounds'] ?? 3,
+                'rounds_completed' => $execution['rounds_completed'] ?? 0,
+                'early_exit' => $execution['early_exit'] ?? false,
+                'early_exit_reason' => $execution['early_exit_reason'] ?? null,
+                'material_or_higher_conflict_count' => $execution['material_or_higher_conflict_count'] ?? 0,
+                'execution_mode' => $execution['mode'] ?? 'deterministic_adaptive_bounded_negotiation',
+            ],
+            'nodes' => array_merge([
+                [
+                    'id' => 'negotiation_layer',
+                    'type' => 'stage',
+                    'label' => 'Structured Negotiation Layer',
+                    'subtitle' => 'Adaptive Cross-Examination, Max 3 Rounds with Early Exit',
+                    'status' => 'completed',
+                ],
+            ], array_map(function (array $round) {
+                return [
+                    'id' => 'negotiation_round_' . $round['round'],
+                    'type' => 'negotiation_round',
+                    'label' => $round['label'],
+                    'status' => $round['status'],
+                    'turn_count' => $round['turn_count'],
+                    'material_conflicts_after_round' => $round['material_or_higher_conflict_count_after_round'],
+                    'skip_reason' => $round['skip_reason'],
+                ];
+            }, $roundSummaries)),
+            'edges' => $this->buildNegotiationGraphEdges($turns),
+        ];
+    }
+
+    private function buildNegotiationGraphEdges(array $turns): array
+    {
+        $edges = [[
+            'source' => 'negotiation_layer',
+            'target' => 'orchestrator_evidence_assembly',
+            'label' => 'negotiation package',
+        ]];
+
+        foreach ($turns as $turn) {
+            $edges[] = [
+                'source' => $turn['from_agent_id'] ?? 'specialist_agent',
+                'target' => 'negotiation_round_' . ($turn['round'] ?? 1),
+                'label' => str_replace('_', ' ', $turn['type'] ?? 'response'),
+                'severity' => $turn['severity'] ?? 'none',
+            ];
+        }
+
+        return $edges;
     }
 
     private function responseForDomain(string $domain, array $output, array $signals, array $metricsContext): array
@@ -525,74 +988,74 @@ class StructuredNegotiationService
 
     private function mockDemoNegotiation(array $standardOutputs, array $metricsContext): array
     {
-        $agentResponses = $this->normalizeAgentResponses([
-            $this->response($standardOutputs['ai_ads_agent'], 'Activation Agent', 'revised_recommendation', 'material', 'Ads performance looks efficient, but downstream activation is weak, so aggressive scaling should be held.', $this->evidenceRefs($metricsContext, [
-                $this->adsCampaignPathPrefix($metricsContext) . '.recent_vs_previous.cost_per_install_change_pct',
-                $this->adsCampaignPathPrefix($metricsContext) . '.recent_vs_previous.conversion_change_pct',
-                'metrics_context.retention_metrics.status',
-                'metrics_context.guardrail_policy.deterministic_decision.blocked_actions',
-            ], ['ads_quality', 'activation_health', 'blocked_actions']), 'Keep budget stable and test higher-intent creative before scaling.', 'medium'),
-            $this->response($standardOutputs['ai_activation_agent'], 'Ads Agent', 'objection', 'material', 'Scaling ads is unsafe while first core action activation is below the safe threshold.', $this->evidenceRefs($metricsContext, [
+        $roundOneTurns = $this->normalizeTurns([
+            $this->turnFromResponse(1, 'activation_agent', $this->response($standardOutputs['ai_activation_agent'], 'Ads Agent', 'objection', 'material', 'Scaling ads is unsafe while first core action activation is below the safe threshold.', $this->evidenceRefs($metricsContext, [
                 'metrics_context.activation_metrics.metrics_7d.food_add_success_rate_from_session',
                 'metrics_context.activation_metrics.metrics_7d.food_add_success_rate_from_workspace',
                 'metrics_context.guardrail_policy.deterministic_decision.blocked_actions',
-            ], ['activation_health', 'first_core_action_rate', 'blocked_actions']), 'Hold acquisition scaling until first action activation recovers.', 'high'),
-            $this->response($standardOutputs['ai_retention_agent'], 'Ads Agent', 'support', 'material', 'I support Activation Agent because early retention is also weak.', $this->evidenceRefs($metricsContext, [
+            ], ['activation_health', 'first_core_action_rate', 'blocked_actions']), 'Hold acquisition scaling until first action activation recovers.', 'high')),
+            $this->turnFromResponse(1, 'retention_agent', $this->response($standardOutputs['ai_retention_agent'], 'Activation Agent', 'support', 'material', 'I support Activation Agent because early retention is also weak.', $this->evidenceRefs($metricsContext, [
                 'metrics_context.retention_metrics.metrics_7d_avg.d1_logged_rate',
                 'metrics_context.retention_metrics.metrics_7d_avg.habit_7d_rate',
                 'metrics_context.retention_metrics.metrics_7d_avg.avg_log_days_7d',
-            ], ['d1_retention_rate', 'retention_health']), 'Prioritize first value moment before increasing traffic volume.', 'medium'),
-            $this->response($standardOutputs['ai_tomorrow_forecast_agent'], 'Ads Agent', 'risk_warning', 'material', 'Tomorrow forecast should caution against scaling until activation and retention actuals improve.', $this->evidenceRefs($metricsContext, [
+            ], ['d1_retention_rate', 'retention_health']), 'Prioritize first value moment before increasing traffic volume.', 'medium')),
+            $this->turnFromResponse(1, 'tomorrow_forecast_agent', $this->response($standardOutputs['ai_tomorrow_forecast_agent'], 'Ads Agent', 'risk_warning', 'material', 'Forecast risk increases if acquisition scales before activation and retention recover.', $this->evidenceRefs($metricsContext, [
                 'metrics_context.tomorrow_forecast_metrics.risk_flags.activation_risk',
                 'metrics_context.tomorrow_forecast_metrics.risk_flags.retention_risk',
                 'metrics_context.tomorrow_forecast_metrics.risk_flags.habit_risk',
-                'metrics_context.forecast_model_calibration.trust_score.updated_score',
-                'metrics_context.forecast_model_calibration.decision_instruction.forecast_role',
-            ], ['forecast_risk_flags', 'forecast_evaluation', 'calibration_memory']), 'Use forecast as caution evidence and verify mature actuals before stronger action.', 'medium'),
-            $this->response($standardOutputs['ai_monetization_agent'], 'Final Decision Agent', 'no_material_objection', 'none', 'No material evidence-based objection from monetization in this demo scenario.', ['specialist_output_summary'], null, 'medium'),
-            $this->response($standardOutputs['ai_version_agent'], 'Final Decision Agent', 'no_material_objection', 'none', 'No material evidence-based objection from version risk in this demo scenario.', ['specialist_output_summary'], null, 'medium'),
+            ], ['forecast_risk_flags']), 'Use forecast as caution evidence before scaling.', 'medium')),
+            $this->turnFromResponse(1, 'monetization_agent', $this->response($standardOutputs['ai_monetization_agent'], 'Final Decision Agent', 'risk_warning', 'minor', 'Do not increase paywall pressure while activation is weak.', $this->evidenceRefs($metricsContext, [
+                'metrics_context.monetization_metrics.metrics_7d.purchase_success_rate_from_paywall',
+                'metrics_context.retention_metrics.metrics_7d_avg.d1_logged_rate',
+            ], ['monetization_recommendation', 'retention_health']), 'Keep paywall pressure segmented to users who reached the value moment.', 'medium')),
         ]);
-
-        $conflicts = [
-            [
-                'conflict_id' => 'conflict_ads_scale_vs_activation',
-                'topic' => 'Should ads budget be scaled today?',
-                'agents_involved' => ['Ads Agent', 'Activation Agent', 'Retention Agent', 'Tomorrow Forecast Agent'],
-                'conflict_type' => 'execution_conflict',
-                'severity' => 'material',
-                'initial_position' => 'Ads performance suggests scaling may be possible.',
-                'counter_position' => 'Activation, retention, and forecast caution indicate scaling is unsafe.',
-                'evidence_summary' => [
-                    'Ads performance looks efficient.',
-                    'First core action activation is weak.',
-                    'D1 retention is weak.',
-                    'Guardrail or forecast signals caution against aggressive scaling.',
-                ],
-                'resolution_candidate' => 'Hold budget, improve activation, test higher-intent creative, and scale only after downstream quality recovers.',
-            ],
+        $openConflicts = $this->buildConflictMatrix($roundOneTurns, $standardOutputs, []);
+        $roundTwoTurns = $this->buildRoundTwoTurns($standardOutputs, $openConflicts, $metricsContext);
+        $turns = array_merge($roundOneTurns, $roundTwoTurns);
+        $revisions = $this->extractRevisions($roundTwoTurns);
+        $conflictMatrix = $this->buildConflictMatrix($turns, $standardOutputs, $revisions);
+        $agentResponses = $this->turnsToAgentResponses($turns);
+        $summary = $this->summarizeNegotiation($agentResponses, $conflictMatrix);
+        $summary['material_conflict_count'] = 0;
+        $summary['critical_conflict_count'] = 0;
+        $summary['material_or_higher_conflict_count'] = 0;
+        $roundSummaries = [
+            $this->buildRoundSummary(1, 'completed', $roundOneTurns, 1, null),
+            $this->buildRoundSummary(2, 'completed', $roundTwoTurns, 0, null),
+            $this->buildRoundSummary(3, 'skipped', [], 0, 'Early Exit: material_or_higher_conflict_count = 0'),
         ];
+        $execution = $this->buildExecutionSummary($agentResponses, $conflictMatrix, $summary, 3, 2, true, 'no_material_conflicts_remaining');
 
         return [
-            'round' => 1,
-            'negotiation_type' => 'single_round_structured_cross_examination',
-            'execution' => $this->buildExecutionSummary($agentResponses, $conflicts, $this->summarizeNegotiation($agentResponses, $conflicts)),
+            'round' => 2,
+            'rounds_completed' => 2,
+            'negotiation_type' => 'adaptive_structured_cross_examination',
+            'execution' => $execution,
             'rules' => [
-                'max_rounds' => 1,
+                'max_rounds' => 3,
+                'early_exit_enabled' => true,
                 'raw_chain_of_thought_allowed' => false,
                 'evidence_required_for_objection' => true,
+                'evidence_bound_objections' => true,
+                'no_free_form_debate' => true,
                 'final_decision_owner' => 'FinalDecisionAgent',
             ],
             'specialist_output_summaries' => array_values($standardOutputs),
             'agent_responses' => $agentResponses,
             'negotiation_timeline' => $this->buildNegotiationTimeline($agentResponses),
-            'conflicts' => $conflicts,
-            'baseline_comparison' => $this->buildBaselineComparison($agentResponses, $conflicts),
+            'round_summaries' => $roundSummaries,
+            'negotiation_transcript' => $turns,
+            'conflict_matrix' => $conflictMatrix,
+            'conflicts' => $conflictMatrix,
+            'revised_recommendations' => $revisions,
+            'graph' => $this->buildNegotiationGraph($roundSummaries, $turns, $execution),
+            'baseline_comparison' => $this->buildBaselineComparison($agentResponses, $conflictMatrix),
             'decision_package' => [
-                'conflict_matrix' => $conflicts,
-                'total_conflict_count' => $this->summarizeNegotiation($agentResponses, $conflicts)['total_conflict_count'],
-                'material_conflict_count' => $this->summarizeNegotiation($agentResponses, $conflicts)['material_conflict_count'],
-                'critical_conflict_count' => $this->summarizeNegotiation($agentResponses, $conflicts)['critical_conflict_count'],
-                'material_or_higher_conflict_count' => $this->summarizeNegotiation($agentResponses, $conflicts)['material_or_higher_conflict_count'],
+                'conflict_matrix' => $conflictMatrix,
+                'total_conflict_count' => $summary['total_conflict_count'],
+                'material_conflict_count' => 0,
+                'critical_conflict_count' => 0,
+                'material_or_higher_conflict_count' => 0,
                 'material_responses' => array_values(array_filter($agentResponses, function (array $response) {
                     return in_array($response['severity'] ?? 'none', ['material', 'critical'], true);
                 })),
@@ -602,15 +1065,36 @@ class StructuredNegotiationService
                     'calibration_memory' => [],
                 ],
             ],
-            'summary' => $this->summarizeNegotiation($agentResponses, $conflicts),
+            'orchestrator_package' => [
+                'specialist_outputs' => array_values($standardOutputs),
+                'negotiation_transcript' => $turns,
+                'conflict_matrix' => $conflictMatrix,
+                'revised_recommendations' => $revisions,
+                'round_summaries' => $roundSummaries,
+                'early_exit_reason' => 'no_material_conflicts_remaining',
+                'rounds_completed' => 2,
+                'material_or_higher_conflict_count' => 0,
+            ],
+            'summary' => $summary,
         ];
     }
 
-    private function buildExecutionSummary(array $agentResponses, array $conflicts, array $summary): array
+    private function buildExecutionSummary(
+        array $agentResponses,
+        array $conflicts,
+        array $summary,
+        int $maxRounds = 3,
+        int $roundsCompleted = 0,
+        bool $earlyExit = false,
+        ?string $earlyExitReason = null
+    ): array
     {
         return [
-            'mode' => 'deterministic_single_round',
-            'max_rounds' => 1,
+            'mode' => 'deterministic_adaptive_bounded_negotiation',
+            'max_rounds' => $maxRounds,
+            'rounds_completed' => $roundsCompleted,
+            'early_exit' => $earlyExit,
+            'early_exit_reason' => $earlyExitReason,
             'agent_response_count' => count($agentResponses),
             'conflict_count' => count($conflicts),
             'total_conflict_count' => $summary['total_conflict_count'] ?? count($conflicts),
@@ -640,7 +1124,7 @@ class StructuredNegotiationService
         return [
             'activation_weak' => $this->isWeakOutput($activationOutput) || $this->metricBelowAny($metricsContext['generic_metrics_context']['activation'] ?? [], ['core_action_success_rate_from_entry'], 30) || $this->metricBelowAny($metricsContext['activation_metrics'] ?? [], ['workspace_rate', 'food_add_success_rate_from_session', 'activation_rate'], 30),
             'retention_weak' => $this->isWeakOutput($retentionOutput) || $this->metricBelowAny($metricsContext['generic_metrics_context']['retention'] ?? [], ['d1_rate', 'habit_7d_rate'], 25) || $this->metricBelowAny($metricsContext['retention_metrics'] ?? [], ['d1_logged_rate', 'habit_7d_rate'], 25),
-            'ads_scaling_pressure' => $this->containsAny($adsFinding, ['scale', 'increase_budget', 'cautious_test', 'evaluate_reset_campaign', 'shift_to_reset_campaign']),
+            'ads_scaling_pressure' => $this->containsAny($adsFinding, ['scale', 'scaling', 'increase_budget', 'cautious_test', 'controlled test', 'evaluate_reset_campaign', 'shift_to_reset_campaign']),
             'ads_efficiency_signal' => $this->containsAny($adsFinding, ['efficient', 'healthy', 'recovery', 'scale', 'cpi']),
             'monetization_pressure' => $this->containsAny($monetizationFinding, ['increase', 'paywall', 'revenue', 'purchase', 'monetization']),
             'guardrail_blocks_scaling' => $this->containsAny(strtolower(json_encode($blockedActions) . ' ' . $blockedDecision . ' ' . $winningGuardrail), ['scale', 'aggressive', 'ads']),

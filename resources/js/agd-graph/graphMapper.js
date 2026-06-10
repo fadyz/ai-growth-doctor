@@ -9,7 +9,7 @@ const fallbackNodes = [
   ['version_agent', 'agentNode', 980, 410, 'Version Agent'],
   ['ads_agent', 'agentNode', 980, 540, 'Ads Agent'],
   ['tomorrow_forecast_agent', 'agentNode', 980, 670, 'Tomorrow Forecast Agent'],
-  ['structured_negotiation', 'negotiationNode', 1340, 260, 'Single-Round Structured Negotiation'],
+  ['structured_negotiation', 'negotiationNode', 1340, 260, 'Structured Negotiation Layer'],
   ['orchestrator_evidence_assembly', 'pipelineNode', 1640, 260, 'Orchestrator Evidence Assembly'],
   ['final_decision_agent', 'decisionNode', 1940, 260, 'Final Decision Agent'],
   ['decision_scenario_simulator', 'outputNode', 2240, 260, 'Decision Scenario Simulator'],

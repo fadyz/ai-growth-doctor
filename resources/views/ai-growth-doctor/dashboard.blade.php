@@ -41,11 +41,13 @@
     @php
         $agents = $analysis['agents'] ?? [];
         $decision = $agents['decision_agent'] ?? [];
-        $activation = $agents['activation_agent'] ?? [];
-        $retention = $agents['retention_agent'] ?? [];
-        $monetization = $agents['monetization_agent'] ?? [];
+        $metrics = $analysis['metrics'] ?? [];
+        $activation = $metrics['activation_metrics'] ?? ($agents['activation_agent']['result'] ?? ($agents['activation_agent'] ?? []));
+        $retention = $metrics['retention_metrics'] ?? ($agents['retention_agent']['result'] ?? ($agents['retention_agent'] ?? []));
+        $monetization = $metrics['monetization_metrics'] ?? ($agents['monetization_agent']['result'] ?? ($agents['monetization_agent'] ?? []));
         $aiDecision = $agents['ai_final_decision_agent'] ?? ($agents['ai_decision_agent'] ?? []);
-        $aiResult = $aiDecision['result'] ?? [];
+        $decisionPackage = $analysis['decision_package'] ?? [];
+        $aiResult = $decisionPackage['final_decision'] ?? ($aiDecision['result'] ?? []);
         $aiActivationAgent = $agents['ai_activation_agent'] ?? [];
         $aiRetentionAgent = $agents['ai_retention_agent'] ?? [];
         $aiMonetizationAgent = $agents['ai_monetization_agent'] ?? [];
@@ -58,9 +60,9 @@
         $aiVersionResult = $aiVersionAgent['result'] ?? [];
         $aiAdsResult = $aiAdsAgent['result'] ?? [];
         $aiTomorrowForecastResult = $aiTomorrowForecastAgent['result'] ?? [];
-        $tomorrowForecastMetrics = $analysis['metrics']['tomorrow_forecast_metrics'] ?? [];
-        $adsMetrics = $analysis['metrics']['ads_metrics'] ?? [];
-        $guardrailPolicy = $analysis['metrics']['guardrail_policy'] ?? [];
+        $tomorrowForecastMetrics = $metrics['tomorrow_forecast_metrics'] ?? [];
+        $adsMetrics = $metrics['ads_metrics'] ?? [];
+        $guardrailPolicy = $metrics['guardrail_policy'] ?? [];
         $deterministicGuardrailBasis = $aiResult['deterministic_guardrail_decision_basis'] ?? [];
         $guardrailDeterministicDecision = $guardrailPolicy['deterministic_decision'] ?? [];
         $guardrailTriggered = $guardrailPolicy['triggered_guardrails'] ?? [];
@@ -93,9 +95,11 @@
         $decisionRiskAssessment = $aiResult['decision_risk_assessment'] ?? [];
         $structuredNegotiation = $analysis['structured_negotiation'] ?? ($agents['structured_negotiation']['result'] ?? []);
         $negotiationRules = $structuredNegotiation['rules'] ?? [];
+        $negotiationExecution = $structuredNegotiation['execution'] ?? [];
+        $roundSummaries = $structuredNegotiation['round_summaries'] ?? [];
         $negotiationResponses = $structuredNegotiation['agent_responses'] ?? [];
         $negotiationTimeline = $structuredNegotiation['negotiation_timeline'] ?? [];
-        $conflictMatrix = $analysis['conflict_matrix'] ?? ($structuredNegotiation['conflicts'] ?? []);
+        $conflictMatrix = $analysis['conflict_matrix'] ?? ($structuredNegotiation['conflict_matrix'] ?? ($structuredNegotiation['conflicts'] ?? []));
         $negotiationSummary = $analysis['negotiation_summary'] ?? ($structuredNegotiation['summary'] ?? []);
         $baselineComparison = $structuredNegotiation['baseline_comparison'] ?? [];
         $singleAgentBaseline = $baselineComparison['single_agent_baseline'] ?? [];
@@ -347,6 +351,8 @@
         };
 
         $dashboardRunId = $analysis['meta']['run_id'] ?? null;
+        $auditTrace = $analysis['full_audit_trace'] ?? [];
+        $auditTraceDownloadUrl = !empty($auditTrace['available']) ? ($auditTrace['download_url'] ?? null) : null;
     @endphp
 
     <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 overflow-x-hidden">
@@ -378,6 +384,15 @@
                             class="inline-flex items-center justify-center rounded-full bg-indigo-700 text-white px-4 py-2 text-sm font-semibold shadow-sm hover:bg-indigo-800 transition"
                         >
                             Open Agent Graph
+                        </a>
+                    @endif
+                    @if ($auditTraceDownloadUrl)
+                        <a
+                            href="{{ $auditTraceDownloadUrl }}"
+                            data-skip-page-loading="true"
+                            class="inline-flex items-center justify-center rounded-full bg-white text-slate-700 border border-slate-200 px-4 py-2 text-sm font-semibold shadow-sm hover:bg-slate-50 transition"
+                        >
+                            Download Audit JSON
                         </a>
                     @endif
                     <button type="button" id="startAsyncRunButton" class="inline-flex items-center justify-center rounded-full bg-slate-900 text-white px-4 py-2 text-sm font-semibold shadow-sm hover:bg-slate-700 transition">
@@ -495,17 +510,17 @@
                             $toneClass = 'bg-slate-50 text-slate-700 ring-slate-200';
                             $dotClass = 'bg-slate-400';
 
-                            if (str_contains($decisionValue, 'hold') || str_contains($decisionValue, 'reduce') || str_contains($decisionValue, 'pause') || str_contains($decisionValue, 'segment_only')) {
+                            if (strpos($decisionValue, 'hold') !== false || strpos($decisionValue, 'reduce') !== false || strpos($decisionValue, 'pause') !== false || strpos($decisionValue, 'segment_only') !== false) {
                                 $toneClass = 'bg-amber-50 text-amber-700 ring-amber-200';
                                 $dotClass = 'bg-amber-500';
                             }
 
-                            if (str_contains($decisionValue, 'continue') || str_contains($decisionValue, 'increase') || str_contains($decisionValue, 'scale')) {
+                            if (strpos($decisionValue, 'continue') !== false || strpos($decisionValue, 'increase') !== false || strpos($decisionValue, 'scale') !== false) {
                                 $toneClass = 'bg-emerald-50 text-emerald-700 ring-emerald-200';
                                 $dotClass = 'bg-emerald-500';
                             }
 
-                            if (str_contains($decisionValue, 'rollback') || str_contains($decisionValue, 'not_enough_data')) {
+                            if (strpos($decisionValue, 'rollback') !== false || strpos($decisionValue, 'not_enough_data') !== false) {
                                 $toneClass = 'bg-rose-50 text-rose-700 ring-rose-200';
                                 $dotClass = 'bg-rose-500';
                             }
@@ -998,13 +1013,13 @@
                                 @php
                                     $vote = strtolower((string) ($trace['vote'] ?? ''));
                                     $voteTone = 'bg-slate-50 text-slate-700 ring-slate-200';
-                                    if (str_contains($vote, 'veto') || str_contains($vote, 'hold') || str_contains($vote, 'reduce') || str_contains($vote, 'segment') || str_contains($vote, 'caution')) {
+                                    if (strpos($vote, 'veto') !== false || strpos($vote, 'hold') !== false || strpos($vote, 'reduce') !== false || strpos($vote, 'segment') !== false || strpos($vote, 'caution') !== false) {
                                         $voteTone = 'bg-amber-50 text-amber-700 ring-amber-200';
                                     }
-                                    if (str_contains($vote, 'scale') || str_contains($vote, 'continue')) {
+                                    if (strpos($vote, 'scale') !== false || strpos($vote, 'continue') !== false) {
                                         $voteTone = 'bg-emerald-50 text-emerald-700 ring-emerald-200';
                                     }
-                                    if (str_contains($vote, 'rollback') || str_contains($vote, 'pause')) {
+                                    if (strpos($vote, 'rollback') !== false || strpos($vote, 'pause') !== false) {
                                         $voteTone = 'bg-rose-50 text-rose-700 ring-rose-200';
                                     }
                                 @endphp
@@ -2232,7 +2247,7 @@
             @if (empty($structuredNegotiation))
                 <div class="p-5">
                     <div class="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400 mb-1">Agent Society Layer</div>
-                    <h2 class="text-xl font-bold">Single-Round Structured Negotiation</h2>
+                    <h2 class="text-xl font-bold">Adaptive Structured Negotiation</h2>
                     <p class="text-sm text-slate-500 mt-1">Structured negotiation was not run for this analysis.</p>
                 </div>
             @else
@@ -2240,34 +2255,60 @@
                     <div class="flex flex-col md:flex-row md:items-start md:justify-between gap-3">
                         <div>
                             <div class="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400 mb-1">Agent Society Layer</div>
-                            <h2 class="text-xl font-bold">Single-Round Structured Negotiation</h2>
-                            <p class="text-sm text-slate-500 mt-1">Peer specialist summaries are examined once in a structured matrix. Rows are not debate turns; each specialist can respond once using auditable evidence refs.</p>
+                            <h2 class="text-xl font-bold">Adaptive Structured Negotiation</h2>
+                            <p class="text-sm text-slate-500 mt-1">Peer specialist summaries are examined in up to three evidence-bound rounds with early exit when material conflicts are resolved.</p>
                         </div>
                         <span class="inline-flex w-fit rounded-full px-3 py-1 text-[11px] font-semibold bg-slate-100 text-slate-700 ring-1 ring-slate-200">
-                            ROUND {{ $structuredNegotiation['round'] ?? 1 }}
+                            {{ $negotiationExecution['rounds_completed'] ?? ($structuredNegotiation['rounds_completed'] ?? ($structuredNegotiation['round'] ?? 0)) }} / {{ $negotiationRules['max_rounds'] ?? 3 }} ROUNDS
                         </span>
                     </div>
                 </div>
 
                 <div class="p-5">
-                    <div class="grid grid-cols-1 md:grid-cols-4 gap-3 mb-5">
+                    <div class="grid grid-cols-1 md:grid-cols-5 gap-3 mb-5">
                         <div class="bg-slate-50 border border-slate-200 rounded-xl p-4">
-                            <div class="text-xs text-slate-500 mb-1">Max Round</div>
-                            <div class="text-lg font-bold">{{ $negotiationRules['max_rounds'] ?? 1 }}</div>
+                            <div class="text-xs text-slate-500 mb-1">Max Rounds</div>
+                            <div class="text-lg font-bold">{{ $negotiationRules['max_rounds'] ?? 3 }}</div>
                         </div>
                         <div class="bg-slate-50 border border-slate-200 rounded-xl p-4">
-                            <div class="text-xs text-slate-500 mb-1">Evidence Required</div>
-                            <div class="text-lg font-bold">{{ !empty($negotiationRules['evidence_required_for_objection']) ? 'YES' : 'NO' }}</div>
+                            <div class="text-xs text-slate-500 mb-1">Rounds Completed</div>
+                            <div class="text-lg font-bold">{{ $negotiationExecution['rounds_completed'] ?? ($structuredNegotiation['rounds_completed'] ?? ($structuredNegotiation['round'] ?? 0)) }}</div>
                         </div>
                         <div class="bg-slate-50 border border-slate-200 rounded-xl p-4">
-                            <div class="text-xs text-slate-500 mb-1">Final Owner</div>
-                            <div class="text-lg font-bold">{{ $negotiationRules['final_decision_owner'] ?? 'FinalDecisionAgent' }}</div>
+                            <div class="text-xs text-slate-500 mb-1">Early Exit</div>
+                            <div class="text-lg font-bold">{{ !empty($negotiationExecution['early_exit']) ? 'YES' : 'NO' }}</div>
                         </div>
                         <div class="bg-slate-50 border border-slate-200 rounded-xl p-4">
-                            <div class="text-xs text-slate-500 mb-1">Raw Chain-of-thought</div>
-                            <div class="text-lg font-bold">{{ !empty($negotiationRules['raw_chain_of_thought_allowed']) ? 'ALLOWED' : 'NOT ALLOWED' }}</div>
+                            <div class="text-xs text-slate-500 mb-1">Early Exit Reason</div>
+                            <div class="text-sm font-bold break-words">{{ $negotiationExecution['early_exit_reason'] ?? '-' }}</div>
+                        </div>
+                        <div class="bg-slate-50 border border-slate-200 rounded-xl p-4">
+                            <div class="text-xs text-slate-500 mb-1">Material Remaining</div>
+                            <div class="text-lg font-bold">{{ $negotiationExecution['material_or_higher_conflict_count'] ?? ($negotiationSummary['material_or_higher_conflict_count'] ?? 0) }}</div>
                         </div>
                     </div>
+
+                    @if (!empty($roundSummaries))
+                        <div class="grid grid-cols-1 md:grid-cols-3 gap-3 mb-5">
+                            @foreach ($roundSummaries as $roundSummary)
+                                <div class="bg-slate-50 border border-slate-200 rounded-xl p-4">
+                                    <div class="flex items-start justify-between gap-3">
+                                        <div>
+                                            <div class="text-xs text-slate-500 mb-1">{{ $roundSummary['label'] ?? ('Round ' . ($roundSummary['round'] ?? '-')) }}</div>
+                                            <div class="font-bold">{{ $roundSummary['purpose'] ?? '-' }}</div>
+                                        </div>
+                                        <span class="inline-flex rounded-full px-2.5 py-1 text-[11px] font-semibold {{ ($roundSummary['status'] ?? '') === 'completed' ? 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200' : 'bg-slate-100 text-slate-600 ring-1 ring-slate-200' }}">
+                                            {{ strtoupper($roundSummary['status'] ?? 'unknown') }}
+                                        </span>
+                                    </div>
+                                    <div class="text-xs text-slate-500 mt-2">{{ $roundSummary['turn_count'] ?? 0 }} turns · {{ $roundSummary['material_or_higher_conflict_count_after_round'] ?? 0 }} material+ remaining</div>
+                                    @if (!empty($roundSummary['skip_reason']))
+                                        <div class="text-xs text-slate-500 mt-1">{{ $roundSummary['skip_reason'] }}</div>
+                                    @endif
+                                </div>
+                            @endforeach
+                        </div>
+                    @endif
 
                     @if (!empty($negotiationTimeline) || !empty($negotiationResponses))
                         @php $timelineRows = !empty($negotiationTimeline) ? $negotiationTimeline : $negotiationResponses; @endphp
@@ -2276,7 +2317,7 @@
                                 <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-2">
                                 <div>
                                     <div class="font-semibold text-slate-900">Cross-Agent Response Matrix</div>
-                                    <div class="text-xs text-slate-500 mt-1">{{ count($timelineRows) }} single-round peer responses. Order is display-only, not a sequential debate.</div>
+                                    <div class="text-xs text-slate-500 mt-1">{{ count($timelineRows) }} evidence-bound peer turns across completed negotiation rounds.</div>
                                 </div>
                                     <span class="inline-flex w-fit rounded-full px-3 py-1 text-[11px] font-semibold bg-indigo-50 text-indigo-700 ring-1 ring-indigo-200">
                                         VIEW MATRIX
@@ -3065,9 +3106,19 @@
             overlay.classList.remove('flex');
         }
 
-        window.addEventListener('pageshow', hidePageLoadingOverlay);
+        let skipNextPageLoadingOverlay = false;
+
+        window.addEventListener('pageshow', function () {
+            skipNextPageLoadingOverlay = false;
+            hidePageLoadingOverlay();
+        });
 
         window.addEventListener('beforeunload', function () {
+            if (skipNextPageLoadingOverlay) {
+                hidePageLoadingOverlay();
+                return;
+            }
+
             showPageLoadingOverlay();
         });
 
@@ -3078,6 +3129,16 @@
         });
 
         document.addEventListener('click', function (event) {
+            const skipLoadingTarget = event.target.closest('[data-skip-page-loading="true"]');
+            if (skipLoadingTarget) {
+                skipNextPageLoadingOverlay = true;
+                hidePageLoadingOverlay();
+                setTimeout(function () {
+                    skipNextPageLoadingOverlay = false;
+                }, 1500);
+                return;
+            }
+
             const target = event.target.closest('[data-show-loading="true"]');
             if (target) {
                 showPageLoadingOverlay();

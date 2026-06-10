@@ -12,6 +12,8 @@ RUN apt-get update \
     && a2enmod rewrite \
     && rm -rf /var/lib/apt/lists/*
 
+RUN echo "memory_limit=512M" > /usr/local/etc/php/conf.d/99-ai-growth-doctor-memory.ini
+
 COPY --from=composer:2.2 /usr/bin/composer /usr/bin/composer
 
 COPY docker/apache/000-default.conf /etc/apache2/sites-available/000-default.conf

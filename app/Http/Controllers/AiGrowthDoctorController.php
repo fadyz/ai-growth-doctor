@@ -121,7 +121,7 @@ class AiGrowthDoctorController extends Controller
             ], 422);
         }
 
-        $run = $this->runProgressStore->get($runId);
+        $run = $this->runProgressStore->getStatus($runId);
 
         if (!$run) {
             return response()->json([
@@ -131,6 +131,23 @@ class AiGrowthDoctorController extends Controller
         }
 
         return response()->json($run);
+    }
+
+    public function downloadAuditTrace(string $runId)
+    {
+        if (!preg_match('/^agd_[A-Za-z0-9_\-]+$/', $runId)) {
+            abort(404);
+        }
+
+        $path = storage_path('app/ai-growth-doctor/audit/' . $runId . '.json');
+
+        if (!is_file($path)) {
+            abort(404);
+        }
+
+        return response()->download($path, $runId . '-full-audit-trace.json', [
+            'Content-Type' => 'application/json',
+        ]);
     }
 
     private function emptyDashboardAnalysis(): array
@@ -385,11 +402,232 @@ class AiGrowthDoctorController extends Controller
 
         $this->persistForecastArtifact($analysis);
 
+        $defaultRunPayload = $this->prepareDefaultRunPayload($analysis, $trackedRunId);
+
         if ($trackedRunId) {
-            $this->runProgressStore->finish($trackedRunId, $analysis);
+            $this->runProgressStore->finish($trackedRunId, $defaultRunPayload);
         }
 
-        return $analysis;
+        return $this->dashboardPayloadFromDefaultRunPayload($defaultRunPayload);
+    }
+
+    private function prepareDefaultRunPayload(array $analysis, ?string $trackedRunId = null): array
+    {
+        $runId = $trackedRunId ?? ($analysis['meta']['run_id'] ?? null);
+        $auditPath = $runId ? $this->persistFullAuditTrace($runId, $analysis) : null;
+        $compact = $this->compactSummaryPayload($analysis, $auditPath);
+        $decisionPackage = $this->decisionPackage($analysis);
+
+        return [
+            'compact_summary_payload' => $compact,
+            'decision_package' => $decisionPackage,
+            'full_audit_trace' => [
+                'available' => $auditPath !== null,
+                'path' => $auditPath,
+                'download_url' => $runId ? route('ai-growth-doctor.runs.audit', ['runId' => $runId], false) : null,
+                'lazy_load_only' => true,
+            ],
+        ];
+    }
+
+    private function dashboardPayloadFromDefaultRunPayload(array $payload): array
+    {
+        $compact = $payload['compact_summary_payload'] ?? $payload;
+
+        if (isset($payload['decision_package'])) {
+            $compact['decision_package'] = $payload['decision_package'];
+        }
+
+        if (isset($payload['full_audit_trace'])) {
+            $compact['full_audit_trace'] = $payload['full_audit_trace'];
+        }
+
+        return $compact;
+    }
+
+    private function compactSummaryPayload(array $analysis, ?string $auditPath): array
+    {
+        $agents = $analysis['agents'] ?? [];
+        $structuredNegotiation = $analysis['structured_negotiation'] ?? [];
+
+        return [
+            'meta' => $analysis['meta'] ?? [],
+            'workflow' => $analysis['workflow'] ?? [],
+            'interaction_log' => [],
+            'app_profile' => $analysis['app_profile'] ?? [],
+            'metric_mapping' => $analysis['metric_mapping'] ?? [],
+            'generic_metrics_context' => $analysis['generic_metrics_context'] ?? [],
+            'mapping_validation' => $analysis['mapping_validation'] ?? [],
+            'source_metric_refs' => [],
+            'structured_negotiation' => $this->compactStructuredNegotiation($structuredNegotiation),
+            'conflict_matrix' => $analysis['conflict_matrix'] ?? ($structuredNegotiation['conflict_matrix'] ?? []),
+            'negotiation_summary' => $analysis['negotiation_summary'] ?? ($structuredNegotiation['summary'] ?? []),
+            'orchestrator_evidence_assembly' => $this->compactOrchestratorEvidenceAssembly($analysis['orchestrator_evidence_assembly'] ?? []),
+            'metrics' => $analysis['metrics'] ?? [],
+            'evaluations' => $this->compactEvaluations($analysis['evaluations'] ?? []),
+            'agents' => $this->compactAgents($agents),
+            'charts' => $analysis['charts'] ?? [],
+            'audit_trace_ref' => [
+                'available' => $auditPath !== null,
+                'path' => $auditPath,
+            ],
+        ];
+    }
+
+    private function decisionPackage(array $analysis): array
+    {
+        $structuredNegotiation = $analysis['structured_negotiation'] ?? [];
+        $finalDecision = $analysis['agents']['ai_final_decision_agent']['result'] ?? ($analysis['agents']['ai_decision_agent']['result'] ?? []);
+
+        return [
+            'meta' => $analysis['meta'] ?? [],
+            'guardrail_policy' => $analysis['metrics']['guardrail_policy'] ?? [],
+            'structured_negotiation' => [
+                'execution' => $structuredNegotiation['execution'] ?? [],
+                'round_summaries' => $structuredNegotiation['round_summaries'] ?? [],
+                'summary' => $structuredNegotiation['summary'] ?? [],
+            ],
+            'conflict_matrix' => $analysis['conflict_matrix'] ?? ($structuredNegotiation['conflict_matrix'] ?? []),
+            'revised_recommendations' => $structuredNegotiation['revised_recommendations'] ?? [],
+            'final_decision' => $finalDecision,
+            'scenario_simulator' => $analysis['agents']['decision_scenario_simulator']['result'] ?? [],
+        ];
+    }
+
+    private function persistFullAuditTrace(string $runId, array $analysis): ?string
+    {
+        $dir = storage_path('app/ai-growth-doctor/audit');
+
+        if (!is_dir($dir)) {
+            mkdir($dir, 0775, true);
+        }
+
+        $relativePath = 'ai-growth-doctor/audit/' . $runId . '.json';
+        $path = storage_path('app/' . $relativePath);
+        $payload = [
+            'run_id' => $runId,
+            'created_at' => now()->format('Y-m-d H:i:s'),
+            'interaction_log' => $analysis['interaction_log'] ?? [],
+            'source_metric_refs' => $analysis['source_metric_refs'] ?? [],
+            'orchestrator_evidence_assembly' => $analysis['orchestrator_evidence_assembly'] ?? [],
+            'full_evaluations' => $analysis['evaluations'] ?? [],
+            'full_structured_negotiation' => $analysis['structured_negotiation'] ?? [],
+            'full_agents' => $analysis['agents'] ?? [],
+            'full_metrics' => $analysis['metrics'] ?? [],
+        ];
+
+        file_put_contents($path, json_encode($payload, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE));
+
+        return $relativePath;
+    }
+
+    private function compactAgents(array $agents): array
+    {
+        $compact = [];
+        $hasFinalDecisionAgent = isset($agents['ai_final_decision_agent']);
+
+        foreach ($agents as $key => $agent) {
+            if (!is_array($agent)) {
+                $compact[$key] = $agent;
+                continue;
+            }
+
+            $compact[$key] = [
+                'agent' => $agent['agent'] ?? $key,
+                'status' => $agent['status'] ?? null,
+                'execution' => $agent['execution'] ?? null,
+                'model' => $agent['model'] ?? null,
+                'cache' => $agent['cache'] ?? null,
+                'result' => $this->compactAgentResult($key, $agent['result'] ?? [], $hasFinalDecisionAgent),
+            ];
+        }
+
+        return $compact;
+    }
+
+    private function compactAgentResult(string $key, array $result, bool $hasFinalDecisionAgent): array
+    {
+        if ($key === 'orchestrator_evidence_assembly') {
+            return $this->compactOrchestratorEvidenceAssembly($result);
+        }
+
+        if ($key === 'structured_negotiation') {
+            return $this->compactStructuredNegotiation($result);
+        }
+
+        if ($key === 'ai_decision_agent' && $hasFinalDecisionAgent) {
+            return [
+                'mirrors' => 'ai_final_decision_agent',
+                'audit_note' => 'Duplicate final decision result is stored only in full_audit_trace.',
+            ];
+        }
+
+        if ($key === 'ai_final_decision_agent') {
+            return [
+                'available_in' => 'decision_package.final_decision',
+                'audit_note' => 'Final decision payload is stored in decision_package; full request context is stored only in full_audit_trace.',
+            ];
+        }
+
+        return $result;
+    }
+
+    private function compactStructuredNegotiation(array $negotiation): array
+    {
+        return [
+            'round' => $negotiation['round'] ?? null,
+            'rounds_completed' => $negotiation['rounds_completed'] ?? ($negotiation['execution']['rounds_completed'] ?? null),
+            'negotiation_type' => $negotiation['negotiation_type'] ?? null,
+            'rules' => $negotiation['rules'] ?? [],
+            'execution' => $negotiation['execution'] ?? [],
+            'round_summaries' => $negotiation['round_summaries'] ?? [],
+            'negotiation_timeline' => $negotiation['negotiation_timeline'] ?? [],
+            'negotiation_transcript' => array_slice($negotiation['negotiation_transcript'] ?? [], 0, 12),
+            'conflict_matrix' => $negotiation['conflict_matrix'] ?? ($negotiation['conflicts'] ?? []),
+            'conflicts' => $negotiation['conflict_matrix'] ?? ($negotiation['conflicts'] ?? []),
+            'revised_recommendations' => $negotiation['revised_recommendations'] ?? [],
+            'summary' => $negotiation['summary'] ?? [],
+            'baseline_comparison' => $negotiation['baseline_comparison'] ?? [],
+        ];
+    }
+
+    private function compactOrchestratorEvidenceAssembly(array $assembly): array
+    {
+        return [
+            'present' => !empty($assembly),
+            'conflict_matrix' => $assembly['conflict_matrix'] ?? [],
+            'negotiation_summary' => $assembly['negotiation_summary'] ?? [],
+            'final_decision_context_available_in_audit' => !empty($assembly['final_decision_context']),
+            'audit_note' => 'Full orchestrator evidence assembly is stored in full_audit_trace.',
+        ];
+    }
+
+    private function compactEvaluations(array $evaluations): array
+    {
+        $forecastEvaluations = $evaluations['forecast_evaluations'] ?? [];
+        $calibration = $evaluations['forecast_model_calibration'] ?? [];
+
+        return [
+            'forecast_evaluations' => [
+                'status' => $forecastEvaluations['status'] ?? null,
+                'actual_data_available_until' => $forecastEvaluations['actual_data_available_until'] ?? null,
+                'evaluated_count' => $forecastEvaluations['evaluated_count'] ?? null,
+                'pending_count' => $forecastEvaluations['pending_count'] ?? null,
+                'skipped_count' => $forecastEvaluations['skipped_count'] ?? null,
+                'latest_evaluation' => $forecastEvaluations['latest_evaluation'] ?? null,
+                'evaluated' => array_slice($forecastEvaluations['evaluated'] ?? [], 0, 3),
+                'pending' => array_slice($forecastEvaluations['pending'] ?? [], 0, 3),
+                'skipped' => array_slice($forecastEvaluations['skipped'] ?? [], 0, 3),
+            ],
+            'forecast_model_calibration' => [
+                'status' => $calibration['status'] ?? null,
+                'evaluations_used' => $calibration['evaluations_used'] ?? null,
+                'overall_mature_hit_rate' => $calibration['overall_mature_hit_rate'] ?? null,
+                'trust_score' => $calibration['trust_score'] ?? [],
+                'decision_instruction' => $calibration['decision_instruction'] ?? [],
+                'bias_detection' => $calibration['bias_detection'] ?? [],
+            ],
+        ];
     }
     private function archiveCheckpointSnapshot(array $checkpoint): void
     {
