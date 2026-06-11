@@ -250,6 +250,9 @@ class AgentOrchestrator
             'material_conflict_count' => $structuredNegotiation['summary']['material_conflict_count'] ?? 0,
             'critical_conflict_count' => $structuredNegotiation['summary']['critical_conflict_count'] ?? 0,
             'material_or_higher_conflict_count' => $structuredNegotiation['summary']['material_or_higher_conflict_count'] ?? 0,
+            'resolved_material_tension_count' => $structuredNegotiation['summary']['resolved_material_tension_count'] ?? 0,
+            'minor_bounded_tension_count' => $structuredNegotiation['summary']['minor_bounded_tension_count'] ?? 0,
+            'minor_bounded_caution_count' => $structuredNegotiation['summary']['minor_bounded_caution_count'] ?? ($structuredNegotiation['summary']['minor_bounded_tension_count'] ?? 0),
             'conflict_ids' => array_values(array_map(function (array $conflict) {
                 return $conflict['conflict_id'] ?? null;
             }, $structuredNegotiation['conflicts'] ?? [])),
@@ -609,6 +612,9 @@ class AgentOrchestrator
                 'material_or_higher_conflict_count' => $structuredNegotiation['summary']['material_or_higher_conflict_count'] ?? null,
                 'bounded_tension_count' => $structuredNegotiation['summary']['bounded_tension_count'] ?? null,
                 'resolved_bounded_tension_count' => $structuredNegotiation['summary']['resolved_bounded_tension_count'] ?? null,
+                'resolved_material_tension_count' => $structuredNegotiation['summary']['resolved_material_tension_count'] ?? null,
+                'minor_bounded_tension_count' => $structuredNegotiation['summary']['minor_bounded_tension_count'] ?? null,
+                'minor_bounded_caution_count' => $structuredNegotiation['summary']['minor_bounded_caution_count'] ?? ($structuredNegotiation['summary']['minor_bounded_tension_count'] ?? null),
                 'partial_concession_count' => $structuredNegotiation['summary']['partial_concession_count'] ?? null,
                 'safety_bounded_revision_count' => $structuredNegotiation['summary']['safety_bounded_revision_count'] ?? null,
             ],

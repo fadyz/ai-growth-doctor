@@ -182,7 +182,8 @@ class AiGrowthDoctorGraphBuilder
         $summary = $negotiation['summary'] ?? [];
         $execution = $negotiation['execution'] ?? [];
         $roundSummaries = $negotiation['round_summaries'] ?? [];
-        $materialOrHigherConflictCount = (int) ($summary['material_or_higher_conflict_count']
+        $materialOrHigherConflictCount = (int) ($summary['unresolved_material_or_higher_conflict_count']
+            ?? $summary['material_or_higher_conflict_count']
             ?? ($execution['material_or_higher_conflict_count'] ?? 0));
         $maxRounds = (int) ($negotiation['rules']['max_rounds'] ?? ($execution['max_rounds'] ?? 1));
         $completedRoundCount = (int) ($execution['rounds_completed'] ?? ($negotiation['rounds_completed'] ?? ($negotiation['round'] ?? 0)));
@@ -226,7 +227,7 @@ class AiGrowthDoctorGraphBuilder
                 'rounds' => $rounds,
                 'earlyExit' => [
                     'label' => 'Early Exit',
-                    'condition' => 'material_or_higher_conflict_count = ' . $materialOrHigherConflictCount,
+                    'condition' => 'unresolved_hard_conflict_count = ' . $materialOrHigherConflictCount,
                     'status' => !empty($execution['early_exit']) ? 'clear' : ($materialOrHigherConflictCount === 0 ? 'clear' : 'blocked'),
                     'reason' => $execution['early_exit_reason'] ?? null,
                     'interpretation' => $execution['early_exit_interpretation'] ?? null,
@@ -237,6 +238,8 @@ class AiGrowthDoctorGraphBuilder
                 'materialOrHigherConflictCount' => $materialOrHigherConflictCount,
                 'boundedTensionCount' => $summary['bounded_tension_count'] ?? ($execution['bounded_tension_count'] ?? 0),
                 'resolvedBoundedTensionCount' => $summary['resolved_bounded_tension_count'] ?? ($execution['resolved_bounded_tension_count'] ?? 0),
+                'resolvedMaterialTensionCount' => $summary['resolved_material_tension_count'] ?? ($execution['resolved_material_tension_count'] ?? 0),
+                'minorBoundedTensionCount' => $summary['minor_bounded_tension_count'] ?? ($execution['minor_bounded_tension_count'] ?? 0),
                 'partialConcessionCount' => $summary['partial_concession_count'] ?? ($execution['partial_concession_count'] ?? 0),
                 'safetyBoundedRevisionCount' => $summary['safety_bounded_revision_count'] ?? ($execution['safety_bounded_revision_count'] ?? 0),
                 'completedRoundCount' => $completedRoundCount,
@@ -323,6 +326,7 @@ class AiGrowthDoctorGraphBuilder
     private function summary(array $run, array $result, array $negotiation, array $decision): array
     {
         $negotiationSummary = $negotiation['summary'] ?? [];
+        $negotiationUiSummary = $negotiation['ui_summary'] ?? [];
         $execution = $negotiation['execution'] ?? [];
         $calibration = $result['evaluations']['forecast_model_calibration'] ?? [];
         $baseline = $negotiation['baseline_comparison']['agent_society'] ?? [];
@@ -331,10 +335,15 @@ class AiGrowthDoctorGraphBuilder
             'status' => $run['status'] ?? 'done',
             'agent_count' => 6,
             'total_conflict_count' => $negotiationSummary['total_conflict_count'] ?? ($execution['total_conflict_count'] ?? count($negotiation['conflicts'] ?? [])),
+            'unresolved_hard_conflict_count' => $negotiationUiSummary['unresolved_hard_conflict_count'] ?? ($negotiationSummary['total_conflict_count'] ?? ($execution['total_conflict_count'] ?? 0)),
             'material_conflict_count' => $negotiationSummary['material_conflict_count'] ?? ($execution['material_conflict_count'] ?? 0),
             'critical_conflict_count' => $negotiationSummary['critical_conflict_count'] ?? ($execution['critical_conflict_count'] ?? 0),
             'bounded_tension_count' => $negotiationSummary['bounded_tension_count'] ?? ($execution['bounded_tension_count'] ?? 0),
             'resolved_bounded_tension_count' => $negotiationSummary['resolved_bounded_tension_count'] ?? ($execution['resolved_bounded_tension_count'] ?? 0),
+            'resolved_material_tension_count' => $negotiationUiSummary['resolved_material_tension_count'] ?? ($negotiationSummary['resolved_material_tension_count'] ?? ($execution['resolved_material_tension_count'] ?? 0)),
+            'minor_bounded_tension_count' => $negotiationSummary['minor_bounded_tension_count'] ?? ($execution['minor_bounded_tension_count'] ?? 0),
+            'minor_bounded_caution_count' => $negotiationUiSummary['minor_bounded_caution_count'] ?? ($negotiationSummary['minor_bounded_caution_count'] ?? ($negotiationSummary['minor_bounded_tension_count'] ?? ($execution['minor_bounded_caution_count'] ?? ($execution['minor_bounded_tension_count'] ?? 0)))),
+            'round_2_status' => $negotiationUiSummary['round_2_status'] ?? null,
             'partial_concession_count' => $negotiationSummary['partial_concession_count'] ?? ($execution['partial_concession_count'] ?? 0),
             'safety_bounded_revision_count' => $negotiationSummary['safety_bounded_revision_count'] ?? ($execution['safety_bounded_revision_count'] ?? 0),
             'business_verdict' => $decision['business_verdict'] ?? null,

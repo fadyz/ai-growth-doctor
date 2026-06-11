@@ -17,7 +17,9 @@ export default function ConflictMatrix({ conflicts, emptyLabel = 'No data availa
           <div className="agd-conflict-head">
             <strong>{conflict.title || conflict.topic || conflict.conflict_id || `Conflict ${index + 1}`}</strong>
             <Badge tone={conflict.severity === 'critical' ? 'danger' : conflict.severity === 'material' ? 'warning' : 'neutral'}>
-              {conflict.type === 'bounded_tension' || conflict.conflict_type === 'bounded_tension' ? 'bounded tension' : (conflict.severity || 'unknown')}
+              {conflict.type === 'bounded_tension' || conflict.conflict_type === 'bounded_tension'
+                ? (conflict.is_resolved_material_tension ? 'resolved material tension' : 'minor bounded caution')
+                : (conflict.severity || 'unknown')}
             </Badge>
           </div>
           <p>{asArray(conflict.supporting_agents || conflict.agents_involved).join(', ') || 'No agents listed'}</p>

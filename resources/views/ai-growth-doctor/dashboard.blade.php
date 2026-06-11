@@ -101,6 +101,7 @@
         $negotiationTimeline = $structuredNegotiation['negotiation_timeline'] ?? [];
         $conflictMatrix = $analysis['conflict_matrix'] ?? ($structuredNegotiation['conflict_matrix'] ?? ($structuredNegotiation['conflicts'] ?? []));
         $negotiationSummary = $analysis['negotiation_summary'] ?? ($structuredNegotiation['summary'] ?? []);
+        $negotiationUiSummary = $structuredNegotiation['ui_summary'] ?? [];
         $baselineComparison = $structuredNegotiation['baseline_comparison'] ?? [];
         $singleAgentBaseline = $baselineComparison['single_agent_baseline'] ?? [];
         $agentSocietyBaseline = $baselineComparison['agent_society'] ?? [];
@@ -2265,14 +2266,29 @@
                 </div>
 
                 <div class="p-5">
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-3 mb-5">
+                        <div class="bg-emerald-50 border border-emerald-200 rounded-xl p-4">
+                            <div class="text-xs text-emerald-700 mb-1">Resolved Material Tensions</div>
+                            <div class="text-lg font-bold text-emerald-950">{{ $negotiationUiSummary['resolved_material_tension_count'] ?? ($negotiationSummary['resolved_material_tension_count'] ?? 0) }} material tensions resolved in Round 1</div>
+                        </div>
+                        <div class="bg-slate-50 border border-slate-200 rounded-xl p-4">
+                            <div class="text-xs text-slate-500 mb-1">Unresolved Hard Conflicts</div>
+                            <div class="text-lg font-bold">{{ ($negotiationUiSummary['unresolved_hard_conflict_count'] ?? ($negotiationSummary['total_conflict_count'] ?? 0)) === 0 ? 'No unresolved hard conflicts' : ($negotiationUiSummary['unresolved_hard_conflict_count'] ?? ($negotiationSummary['total_conflict_count'] ?? 0)) }}</div>
+                        </div>
+                        <div class="bg-slate-50 border border-slate-200 rounded-xl p-4">
+                            <div class="text-xs text-slate-500 mb-1">Round 2</div>
+                            <div class="text-lg font-bold">{{ ($negotiationUiSummary['round_2_status'] ?? null) === 'skipped_by_policy' ? 'Round 2 skipped by policy' : (!empty($negotiationExecution['early_exit']) ? 'Round 2 skipped by policy' : 'Round 2 open') }}</div>
+                        </div>
+                    </div>
+
                     <div class="grid grid-cols-1 md:grid-cols-5 gap-3 mb-5">
                         <div class="bg-slate-50 border border-slate-200 rounded-xl p-4">
                             <div class="text-xs text-slate-500 mb-1">Max Rounds</div>
-                            <div class="text-lg font-bold">{{ $negotiationRules['max_rounds'] ?? 3 }}</div>
+                            <div class="text-lg font-bold">{{ $negotiationUiSummary['rounds_supported'] ?? ($negotiationRules['max_rounds'] ?? 3) }}</div>
                         </div>
                         <div class="bg-slate-50 border border-slate-200 rounded-xl p-4">
                             <div class="text-xs text-slate-500 mb-1">Rounds Completed</div>
-                            <div class="text-lg font-bold">{{ $negotiationExecution['rounds_completed'] ?? ($structuredNegotiation['rounds_completed'] ?? ($structuredNegotiation['round'] ?? 0)) }}</div>
+                            <div class="text-lg font-bold">{{ $negotiationUiSummary['rounds_completed'] ?? ($negotiationExecution['rounds_completed'] ?? ($structuredNegotiation['rounds_completed'] ?? ($structuredNegotiation['round'] ?? 0))) }}</div>
                         </div>
                         <div class="bg-slate-50 border border-slate-200 rounded-xl p-4">
                             <div class="text-xs text-slate-500 mb-1">Early Exit</div>
@@ -2283,8 +2299,8 @@
                             <div class="text-sm font-bold break-words">{{ $negotiationExecution['early_exit_reason'] ?? '-' }}</div>
                         </div>
                         <div class="bg-slate-50 border border-slate-200 rounded-xl p-4">
-                            <div class="text-xs text-slate-500 mb-1">Material Remaining</div>
-                            <div class="text-lg font-bold">{{ $negotiationExecution['material_or_higher_conflict_count'] ?? ($negotiationSummary['material_or_higher_conflict_count'] ?? 0) }}</div>
+                            <div class="text-xs text-slate-500 mb-1">Unresolved Hard Conflicts</div>
+                            <div class="text-lg font-bold">{{ $negotiationUiSummary['unresolved_hard_conflict_count'] ?? ($negotiationExecution['material_or_higher_conflict_count'] ?? ($negotiationSummary['material_or_higher_conflict_count'] ?? 0)) }}</div>
                         </div>
                     </div>
 
@@ -2301,7 +2317,7 @@
                                             {{ strtoupper($roundSummary['status'] ?? 'unknown') }}
                                         </span>
                                     </div>
-                                    <div class="text-xs text-slate-500 mt-2">{{ $roundSummary['turn_count'] ?? 0 }} turns · {{ $roundSummary['material_or_higher_conflict_count_after_round'] ?? 0 }} material+ remaining</div>
+                                    <div class="text-xs text-slate-500 mt-2">{{ $roundSummary['turn_count'] ?? 0 }} turns · {{ $roundSummary['unresolved_material_conflict_count_after_round'] ?? ($roundSummary['material_or_higher_conflict_count_after_round'] ?? 0) }} unresolved material · {{ $roundSummary['resolved_material_tension_count_after_round'] ?? 0 }} resolved material tensions</div>
                                     @if (!empty($roundSummary['skip_reason']))
                                         <div class="text-xs text-slate-500 mt-1">{{ $roundSummary['skip_reason'] }}</div>
                                     @endif
@@ -2370,7 +2386,7 @@
 
                     @if (!empty($conflictMatrix))
                         <div class="mb-5">
-                            <div class="font-semibold text-slate-900 mb-3">Conflict Matrix / Bounded Tensions</div>
+                            <div class="font-semibold text-slate-900 mb-3">Tension & Resolution Matrix</div>
                             <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
                                 @foreach ($conflictMatrix as $conflict)
                                     @php
@@ -2383,7 +2399,7 @@
                                                 <div class="font-bold {{ $isBoundedTension ? 'text-sky-950' : 'text-amber-950' }}">{{ $conflict['title'] ?? ($conflict['topic'] ?? '-') }}</div>
                                             </div>
                                             <span class="inline-flex rounded-full px-2.5 py-1 text-[11px] font-semibold bg-white {{ $isBoundedTension ? 'text-sky-700 ring-sky-200' : 'text-amber-700 ring-amber-200' }} ring-1">
-                                                {{ $isBoundedTension ? 'BOUNDED TENSION' : strtoupper(str_replace('_', ' ', $conflict['severity'] ?? 'none')) }}
+                                                {{ $isBoundedTension ? (!empty($conflict['is_resolved_material_tension']) ? 'RESOLVED MATERIAL TENSION' : 'MINOR BOUNDED CAUTION') : strtoupper(str_replace('_', ' ', $conflict['severity'] ?? 'none')) }}
                                             </span>
                                         </div>
                                         <div class="text-xs {{ $isBoundedTension ? 'text-sky-800' : 'text-amber-800' }} mb-3">
@@ -2400,22 +2416,26 @@
                         </div>
                     @endif
 
-                    <div class="grid grid-cols-1 md:grid-cols-4 gap-3 mb-5">
+                    <div class="grid grid-cols-1 md:grid-cols-5 gap-3 mb-5">
                         <div class="bg-slate-50 border border-slate-200 rounded-xl p-4">
-                            <div class="text-xs text-slate-500 mb-1">Hard Conflicts</div>
-                            <div class="text-2xl font-bold">{{ $negotiationSummary['total_conflict_count'] ?? count($conflictMatrix) }}</div>
+                            <div class="text-xs text-slate-500 mb-1">Unresolved Hard Conflicts</div>
+                            <div class="text-2xl font-bold">{{ $negotiationUiSummary['unresolved_hard_conflict_count'] ?? ($negotiationSummary['total_conflict_count'] ?? count($conflictMatrix)) }}</div>
                         </div>
                         <div class="bg-slate-50 border border-slate-200 rounded-xl p-4">
-                            <div class="text-xs text-slate-500 mb-1">Material Conflicts</div>
-                            <div class="text-2xl font-bold">{{ $negotiationSummary['material_conflict_count'] ?? 0 }}</div>
+                            <div class="text-xs text-slate-500 mb-1">Resolved Material Tensions</div>
+                            <div class="text-2xl font-bold">{{ $negotiationSummary['resolved_material_tension_count'] ?? 0 }}</div>
                         </div>
                         <div class="bg-slate-50 border border-slate-200 rounded-xl p-4">
-                            <div class="text-xs text-slate-500 mb-1">Critical Conflicts</div>
-                            <div class="text-2xl font-bold">{{ $negotiationSummary['critical_conflict_count'] ?? 0 }}</div>
+                            <div class="text-xs text-slate-500 mb-1">Minor Bounded Cautions</div>
+                            <div class="text-2xl font-bold">{{ $negotiationUiSummary['minor_bounded_caution_count'] ?? ($negotiationSummary['minor_bounded_tension_count'] ?? 0) }}</div>
                         </div>
                         <div class="bg-slate-50 border border-slate-200 rounded-xl p-4">
-                            <div class="text-xs text-slate-500 mb-1">Bounded Tensions</div>
-                            <div class="text-2xl font-bold">{{ $negotiationSummary['bounded_tension_count'] ?? 0 }}</div>
+                            <div class="text-xs text-slate-500 mb-1">Safety-Bounded Partial Concessions</div>
+                            <div class="text-2xl font-bold">{{ $negotiationSummary['safety_bounded_revision_count'] ?? 0 }}</div>
+                        </div>
+                        <div class="bg-slate-50 border border-slate-200 rounded-xl p-4">
+                            <div class="text-xs text-slate-500 mb-1">Round 2</div>
+                            <div class="text-2xl font-bold">{{ ($negotiationUiSummary['round_2_status'] ?? null) === 'skipped_by_policy' ? 'SKIPPED BY POLICY' : (!empty($negotiationExecution['early_exit']) ? 'SKIPPED BY POLICY' : 'OPEN') }}</div>
                         </div>
                     </div>
 
@@ -2427,7 +2447,9 @@
                                     <div class="font-bold text-slate-950 mb-2">Single Agent Baseline</div>
                                     <div class="space-y-2 text-sm">
                                         <div><span class="text-slate-500">Recommendation:</span> {{ $singleAgentBaseline['recommendation'] ?? '-' }}</div>
-                                        <div><span class="text-slate-500">Missed conflicts:</span> <strong>{{ $singleAgentBaseline['missed_conflicts'] ?? 0 }}</strong></div>
+                                        <div><span class="text-slate-500">Missed unresolved conflicts:</span> <strong>{{ $singleAgentBaseline['missed_unresolved_conflicts'] ?? ($singleAgentBaseline['missed_conflicts'] ?? 0) }}</strong></div>
+                                        <div><span class="text-slate-500">Missed resolved material tensions:</span> <strong>{{ $singleAgentBaseline['missed_resolved_material_tensions'] ?? 0 }}</strong></div>
+                                        <div><span class="text-slate-500">Missed minor bounded cautions:</span> <strong>{{ $singleAgentBaseline['missed_minor_bounded_tensions'] ?? 0 }}</strong></div>
                                         <div><span class="text-slate-500">Unsafe recommendation detected:</span> <strong>{{ !empty($singleAgentBaseline['unsafe_recommendation_detected']) ? 'yes' : 'no' }}</strong></div>
                                         <div><span class="text-slate-500">Evidence coverage:</span> <strong>{{ $singleAgentBaseline['evidence_coverage_score'] ?? '-' }}</strong></div>
                                         <div><span class="text-slate-500">Caveat coverage:</span> <strong>{{ $singleAgentBaseline['caveat_coverage_score'] ?? '-' }}</strong></div>
@@ -2437,7 +2459,9 @@
                                     <div class="font-bold text-emerald-950 mb-2">Agent Society</div>
                                     <div class="space-y-2 text-sm text-emerald-950">
                                         <div><span class="text-emerald-700">Recommendation:</span> {{ $agentSocietyBaseline['recommendation'] ?? '-' }}</div>
-                                        <div><span class="text-emerald-700">Conflicts detected:</span> <strong>{{ $agentSocietyBaseline['conflicts_detected'] ?? 0 }}</strong></div>
+                                        <div><span class="text-emerald-700">Unresolved conflicts detected:</span> <strong>{{ $agentSocietyBaseline['unresolved_conflicts_detected'] ?? ($agentSocietyBaseline['conflicts_detected'] ?? 0) }}</strong></div>
+                                        <div><span class="text-emerald-700">Resolved material tensions detected:</span> <strong>{{ $agentSocietyBaseline['resolved_material_tensions_detected'] ?? 0 }}</strong></div>
+                                        <div><span class="text-emerald-700">Minor bounded cautions detected:</span> <strong>{{ $agentSocietyBaseline['minor_bounded_tensions_detected'] ?? 0 }}</strong></div>
                                         <div><span class="text-emerald-700">Unsafe recommendation prevented:</span> <strong>{{ !empty($agentSocietyBaseline['unsafe_recommendation_prevented']) ? 'yes' : 'no' }}</strong></div>
                                         <div><span class="text-emerald-700">Evidence coverage:</span> <strong>{{ $agentSocietyBaseline['evidence_coverage_score'] ?? '-' }}</strong></div>
                                         <div><span class="text-emerald-700">Caveat coverage:</span> <strong>{{ $agentSocietyBaseline['caveat_coverage_score'] ?? '-' }}</strong></div>

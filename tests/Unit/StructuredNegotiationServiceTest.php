@@ -63,12 +63,30 @@ class StructuredNegotiationServiceTest extends TestCase
         $this->assertSame('no_material_conflicts_remaining', $output['execution']['early_exit_reason']);
         $this->assertNotEmpty($output['conflict_matrix']);
         $this->assertSame(0, $output['summary']['material_or_higher_conflict_count']);
+        $this->assertSame(0, $output['summary']['unresolved_material_conflict_count']);
+        $this->assertSame(2, $output['summary']['resolved_material_tension_count']);
+        $this->assertSame(1, $output['summary']['minor_bounded_tension_count']);
+        $this->assertSame('Deprecated UI label. Means unresolved hard conflicts only.', $output['summary']['total_conflict_count_semantics']);
+        $this->assertSame(0, $output['ui_summary']['unresolved_hard_conflict_count']);
+        $this->assertSame(2, $output['ui_summary']['resolved_material_tension_count']);
+        $this->assertSame(1, $output['ui_summary']['minor_bounded_caution_count']);
+        $this->assertSame(1, $output['ui_summary']['rounds_completed']);
+        $this->assertSame(3, $output['ui_summary']['rounds_supported']);
+        $this->assertSame('skipped_by_policy', $output['ui_summary']['round_2_status']);
+        $this->assertSame('All material tensions were resolved in Round 1.', $output['ui_summary']['round_2_skip_reason']);
         $this->assertSame($output['conflict_matrix'], $output['decision_package']['conflict_matrix']);
         $this->assertSame('completed', $output['round_summaries'][0]['status']);
         $this->assertSame('skipped', $output['round_summaries'][1]['status']);
         $this->assertSame('skipped', $output['round_summaries'][2]['status']);
         $this->assertNotEmpty($output['negotiation_timeline']);
         $this->assertArrayHasKey('baseline_comparison', $output);
+        $adsTension = current(array_filter($output['conflict_matrix'], function (array $conflict) {
+            return ($conflict['conflict_id'] ?? null) === 'tension_ads_efficiency_vs_activation_retention_constraints';
+        }));
+        $this->assertSame('material', $adsTension['severity']);
+        $this->assertSame('resolved_in_round_1', $adsTension['status']);
+        $this->assertFalse($adsTension['is_unresolved_material_conflict']);
+        $this->assertTrue($adsTension['is_resolved_material_tension']);
         $this->assertContains('metrics_context.activation_metrics.metrics_7d.food_add_success_rate_from_session', $output['agent_responses'][0]['evidence_refs']);
     }
 

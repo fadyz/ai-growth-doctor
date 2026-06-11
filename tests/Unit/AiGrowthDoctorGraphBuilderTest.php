@@ -31,6 +31,18 @@ class AiGrowthDoctorGraphBuilderTest extends TestCase
                         'material_conflict_count' => 0,
                         'critical_conflict_count' => 0,
                         'material_or_higher_conflict_count' => 0,
+                        'unresolved_material_or_higher_conflict_count' => 0,
+                        'resolved_material_tension_count' => 2,
+                        'minor_bounded_tension_count' => 1,
+                    ],
+                    'ui_summary' => [
+                        'unresolved_hard_conflict_count' => 0,
+                        'resolved_material_tension_count' => 2,
+                        'minor_bounded_caution_count' => 1,
+                        'rounds_completed' => 2,
+                        'rounds_supported' => 3,
+                        'round_2_status' => 'skipped_by_policy',
+                        'round_2_skip_reason' => 'All material tensions were resolved in Round 1.',
                     ],
                     'rules' => [
                         'max_rounds' => 3,
@@ -67,7 +79,7 @@ class AiGrowthDoctorGraphBuilderTest extends TestCase
                             'status' => 'skipped',
                             'turn_count' => 0,
                             'material_or_higher_conflict_count_after_round' => 0,
-                            'skip_reason' => 'Early Exit: material_or_higher_conflict_count = 0',
+                            'skip_reason' => 'Early Exit: material tensions were resolved and no unresolved material or critical conflict remained.',
                         ],
                     ],
                 ],
@@ -90,7 +102,10 @@ class AiGrowthDoctorGraphBuilderTest extends TestCase
         $this->assertSame('Revision / Rebuttal', $negotiationNode['data']['rounds'][1]['name']);
         $this->assertSame('skipped', $negotiationNode['data']['rounds'][2]['status']);
         $this->assertSame('Escalation Only', $negotiationNode['data']['rounds'][2]['name']);
-        $this->assertSame('material_or_higher_conflict_count = 0', $negotiationNode['data']['earlyExit']['condition']);
+        $this->assertSame('unresolved_hard_conflict_count = 0', $negotiationNode['data']['earlyExit']['condition']);
+        $this->assertSame(0, $graph['summary']['unresolved_hard_conflict_count']);
+        $this->assertSame(2, $graph['summary']['resolved_material_tension_count']);
+        $this->assertSame(1, $graph['summary']['minor_bounded_caution_count']);
         $this->assertSame('clear', $negotiationNode['data']['earlyExit']['status']);
         $this->assertCount(1, $outgoingNegotiationEdges);
         $this->assertSame('orchestrator_evidence_assembly', $outgoingNegotiationEdges[0]['target']);

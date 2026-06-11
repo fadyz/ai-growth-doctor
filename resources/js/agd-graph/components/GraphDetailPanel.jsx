@@ -65,8 +65,8 @@ function RunSummary({ graph }) {
         <dd>{graph.summary?.status || 'No data available'}</dd>
         <dt>Business verdict</dt>
         <dd>{graph.summary?.business_verdict || 'No data available'}</dd>
-        <dt>Conflict count</dt>
-        <dd>{graph.summary?.total_conflict_count ?? 'No data available'}</dd>
+        <dt>Unresolved hard conflicts</dt>
+        <dd>{graph.summary?.unresolved_hard_conflict_count ?? graph.summary?.total_conflict_count ?? 'No data available'}</dd>
       </dl>
       <Section title="Interaction Log">
         <EvidenceList items={graph.details?.interaction_log} />
@@ -301,10 +301,12 @@ function NegotiationDetails({ negotiation }) {
           <dd>{execution.early_exit_reason || 'No data available'}</dd>
           <dt>Early exit interpretation</dt>
           <dd>{execution.early_exit_interpretation || 'No data available'}</dd>
-          <dt>Material conflicts remaining</dt>
+          <dt>Unresolved hard conflicts</dt>
           <dd>{execution.material_or_higher_conflict_count ?? negotiation.summary?.material_or_higher_conflict_count ?? 0}</dd>
-          <dt>Bounded soft tensions</dt>
-          <dd>{execution.bounded_tension_count ?? negotiation.summary?.bounded_tension_count ?? 0}</dd>
+          <dt>Resolved material tensions</dt>
+          <dd>{execution.resolved_material_tension_count ?? negotiation.summary?.resolved_material_tension_count ?? 0}</dd>
+          <dt>Minor bounded cautions</dt>
+          <dd>{negotiation.ui_summary?.minor_bounded_caution_count ?? execution.minor_bounded_tension_count ?? negotiation.summary?.minor_bounded_tension_count ?? 0}</dd>
           <dt>Partial concessions</dt>
           <dd>{execution.partial_concession_count ?? negotiation.summary?.partial_concession_count ?? 0}</dd>
           <dt>Safety-bounded revisions</dt>
@@ -319,9 +321,9 @@ function NegotiationDetails({ negotiation }) {
       </Section>
       <Section title="Why did Round 2 not run?">
         <p>
-          Each specialist agent receives bounded safe context before negotiation. In this run, agents surfaced soft cross-domain tensions,
-          but the challenged recommendations were already safety-bounded. Aggressive scaling was rejected while cautious controlled testing
-          was preserved. Because no unresolved material or critical conflict remained, Round 2 and Round 3 were skipped by early-exit policy.
+          Agents surfaced material business tensions and minor cautions. The material tensions were resolved in Round 1 because unsafe
+          actions were rejected while safe controlled actions were preserved. Round 2 was skipped because all material tensions were resolved
+          in Round 1.
         </p>
       </Section>
       <Section title="Round Summaries">
@@ -330,7 +332,7 @@ function NegotiationDetails({ negotiation }) {
             <div className="agd-evidence-item" key={round.round}>
               <strong>{round.label || `Round ${round.round}`}</strong>
               <span>
-                {round.status || 'unknown'} · {round.turn_count ?? 0} turns · {round.material_or_higher_conflict_count_after_round ?? 0} material+ remaining
+                {round.status || 'unknown'} · {round.turn_count ?? 0} turns · {round.unresolved_material_conflict_count_after_round ?? round.material_or_higher_conflict_count_after_round ?? 0} unresolved hard conflicts
                 {round.skip_reason ? ` · ${round.skip_reason}` : ''}
               </span>
             </div>
@@ -340,24 +342,28 @@ function NegotiationDetails({ negotiation }) {
       <Section title="Negotiation Timeline">
         <NegotiationTimeline items={negotiation.negotiation_timeline} />
       </Section>
-      <Section title="Hard Conflicts">
+      <Section title="Unresolved Hard Conflicts">
         <ConflictMatrix
           conflicts={asArray(negotiation.conflicts).filter((conflict) => conflict.type !== 'bounded_tension' && conflict.conflict_type !== 'bounded_tension')}
-          emptyLabel="0 unresolved material conflicts"
+          emptyLabel="No unresolved hard conflicts."
         />
       </Section>
-      <Section title="Bounded Soft Tensions">
+      <Section title="Tension & Resolution Matrix">
         <ConflictMatrix
           conflicts={asArray(negotiation.conflicts).filter((conflict) => conflict.type === 'bounded_tension' || conflict.conflict_type === 'bounded_tension')}
-          emptyLabel="No bounded soft tensions"
+          emptyLabel={(negotiation.ui_summary?.resolved_material_tension_count ?? negotiation.summary?.resolved_material_tension_count ?? 0) > 0 ? 'No unresolved hard conflicts.' : 'No bounded cautions'}
         />
       </Section>
       <Section title="Baseline Comparison">
         <dl className="agd-detail-dl">
-          <dt>Single Agent missed conflicts</dt>
-          <dd>{baseline.single_agent_baseline?.missed_conflicts ?? 'No data available'}</dd>
-          <dt>Agent Society conflicts detected</dt>
-          <dd>{baseline.agent_society?.conflicts_detected ?? 'No data available'}</dd>
+          <dt>Single Agent missed unresolved conflicts</dt>
+          <dd>{baseline.single_agent_baseline?.missed_unresolved_conflicts ?? baseline.single_agent_baseline?.missed_conflicts ?? 'No data available'}</dd>
+          <dt>Single Agent missed resolved material tensions</dt>
+          <dd>{baseline.single_agent_baseline?.missed_resolved_material_tensions ?? 'No data available'}</dd>
+          <dt>Agent Society unresolved conflicts detected</dt>
+          <dd>{baseline.agent_society?.unresolved_conflicts_detected ?? baseline.agent_society?.conflicts_detected ?? 'No data available'}</dd>
+          <dt>Agent Society resolved material tensions detected</dt>
+          <dd>{baseline.agent_society?.resolved_material_tensions_detected ?? 'No data available'}</dd>
           <dt>Unsafe prevented</dt>
           <dd>{stringifyValue(baseline.agent_society?.unsafe_recommendation_prevented)}</dd>
           <dt>Unsafe prevention basis</dt>

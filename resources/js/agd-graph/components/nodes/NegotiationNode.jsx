@@ -10,7 +10,7 @@ export default function NegotiationNode({ data }) {
   ];
   const earlyExit = data.earlyExit || {
     label: 'Early Exit',
-    condition: `material_or_higher_conflict_count = ${data.materialOrHigherConflictCount ?? 0}`,
+    condition: `unresolved_hard_conflict_count = ${data.materialOrHigherConflictCount ?? 0}`,
     status: (data.materialOrHigherConflictCount ?? 0) === 0 ? 'clear' : 'blocked',
   };
   const statusTone = (status) => {
@@ -49,7 +49,8 @@ export default function NegotiationNode({ data }) {
       <div className="agd-badge-row">
         <Badge tone="success">{data.completedRoundCount ?? rounds.filter((round) => round.status === 'completed').length} completed</Badge>
         <Badge tone="neutral">{data.maxRounds ?? rounds.length} rounds</Badge>
-        <Badge tone="neutral">{data.boundedTensionCount ?? 0} bounded tensions</Badge>
+        <Badge tone="neutral">{data.resolvedMaterialTensionCount ?? 0} resolved material tensions</Badge>
+        <Badge tone="neutral">{data.minorBoundedTensionCount ?? 0} minor bounded cautions</Badge>
         <Badge tone="neutral">{data.partialConcessionCount ?? 0} partial concessions</Badge>
         <Badge tone={data.criticalConflictCount > 0 ? 'danger' : data.materialConflictCount > 0 ? 'warning' : 'success'}>{data.status}</Badge>
       </div>

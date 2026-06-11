@@ -80,14 +80,15 @@ class StructuredNegotiationService
         $agentResponses = $this->turnsToAgentResponses($turns);
         $summary = $this->summarizeNegotiation($agentResponses, $conflictMatrix);
         $summary['material_conflict_count'] = count(array_filter($conflictMatrix, function (array $conflict) {
-            return ($conflict['severity'] ?? null) === 'material' && ($conflict['status'] ?? 'open') !== 'resolved';
+            return ($conflict['severity'] ?? null) === 'material' && ($conflict['is_unresolved_material_conflict'] ?? false) === true;
         }));
         $summary['critical_conflict_count'] = count(array_filter($conflictMatrix, function (array $conflict) {
-            return ($conflict['severity'] ?? null) === 'critical' && ($conflict['status'] ?? 'open') !== 'resolved';
+            return ($conflict['severity'] ?? null) === 'critical' && ($conflict['is_unresolved_material_conflict'] ?? false) === true;
         }));
         $summary['material_or_higher_conflict_count'] = $materialConflictCount;
         $timeline = $this->buildNegotiationTimeline($agentResponses);
         $execution = $this->buildExecutionSummary($agentResponses, $conflictMatrix, $summary, $maxRounds, $roundsCompleted, $earlyExit, $earlyExitReason);
+        $uiSummary = $this->buildUiSummary($summary, $execution, $maxRounds);
         $safeContextRefs = [
             'app_profile' => $this->safeKeys($metricsContext['app_profile'] ?? [], ['app_id', 'app_name', 'app_category', 'core_action_name', 'core_action_success_label', 'monetization_model', 'data_mode']),
             'mapping_validation' => $this->safeKeys($metricsContext['mapping_validation'] ?? [], ['status', 'mapped_metric_count', 'required_metric_count', 'missing_required_metrics', 'missing_optional_metrics', 'low_sample_warnings']),
@@ -101,6 +102,7 @@ class StructuredNegotiationService
             'rounds_completed' => $roundsCompleted,
             'negotiation_type' => 'adaptive_structured_cross_examination',
             'execution' => $execution,
+            'ui_summary' => $uiSummary,
             'rules' => [
                 'max_rounds' => $maxRounds,
                 'early_exit_enabled' => true,
@@ -128,6 +130,12 @@ class StructuredNegotiationService
                 'material_or_higher_conflict_count' => $summary['material_or_higher_conflict_count'],
                 'bounded_tension_count' => $summary['bounded_tension_count'] ?? 0,
                 'resolved_bounded_tension_count' => $summary['resolved_bounded_tension_count'] ?? 0,
+                'material_tension_count' => $summary['material_tension_count'] ?? 0,
+                'resolved_material_tension_count' => $summary['resolved_material_tension_count'] ?? 0,
+                'material_but_resolved_tension_count' => $summary['material_but_resolved_tension_count'] ?? 0,
+                'minor_bounded_tension_count' => $summary['minor_bounded_tension_count'] ?? 0,
+                'minor_bounded_caution_count' => $summary['minor_bounded_caution_count'] ?? 0,
+                'unresolved_material_or_higher_conflict_count' => $summary['unresolved_material_or_higher_conflict_count'] ?? $summary['material_or_higher_conflict_count'],
                 'partial_concession_count' => $summary['partial_concession_count'] ?? 0,
                 'safety_bounded_revision_count' => $summary['safety_bounded_revision_count'] ?? 0,
                 'bounded_tensions' => array_values(array_filter($conflictMatrix, function (array $conflict) {
@@ -148,6 +156,10 @@ class StructuredNegotiationService
                 'rounds_completed' => $roundsCompleted,
                 'material_or_higher_conflict_count' => $materialConflictCount,
                 'bounded_tension_count' => $summary['bounded_tension_count'] ?? 0,
+                'material_tension_count' => $summary['material_tension_count'] ?? 0,
+                'resolved_material_tension_count' => $summary['resolved_material_tension_count'] ?? 0,
+                'minor_bounded_tension_count' => $summary['minor_bounded_tension_count'] ?? 0,
+                'minor_bounded_caution_count' => $summary['minor_bounded_caution_count'] ?? 0,
                 'partial_concession_count' => $summary['partial_concession_count'] ?? 0,
                 'safety_bounded_revision_count' => $summary['safety_bounded_revision_count'] ?? 0,
             ],
@@ -394,15 +406,23 @@ class StructuredNegotiationService
     private function countUnresolvedMaterialOrHigher(array $conflictMatrix): int
     {
         return count(array_filter($conflictMatrix, function (array $conflict) {
+            if (($conflict['is_unresolved_material_conflict'] ?? null) === false) {
+                return false;
+            }
+
+            if (($conflict['type'] ?? null) === 'bounded_tension' || ($conflict['conflict_type'] ?? null) === 'bounded_tension') {
+                return false;
+            }
+
             return in_array($conflict['severity'] ?? 'none', ['material', 'critical'], true)
-                && ($conflict['status'] ?? 'open') !== 'resolved';
+                && !in_array($conflict['status'] ?? 'open', ['resolved', 'resolved_in_round_1', 'bounded_in_round_1'], true);
         }));
     }
 
     private function buildRoundSummary(int $round, string $status, array $turns, int $materialConflictCount, ?string $skipReason): array
     {
         $labels = [
-            1 => ['Round 1: Soft constraints, bounded tensions, and immediate alignment', 'Soft Constraints / Bounded Tensions / Immediate Alignment'],
+            1 => ['Round 1: Material tensions bounded and minor cautions aligned', 'Material Tensions Bounded / Minor Cautions Aligned'],
             2 => ['Round 2: Revision / Rebuttal', 'Revision / Rebuttal'],
             3 => ['Round 3: Escalation Only', 'Escalation Only'],
         ];
@@ -414,6 +434,11 @@ class StructuredNegotiationService
             return in_array($turn['severity'] ?? 'none', ['material', 'critical'], true);
         }));
         $boundedTensionCount = $this->roundBoundedTensionCount($round, $turns);
+        $resolvedMaterialTensionCount = count(array_filter($turns, function (array $turn) {
+            return ($turn['is_resolved_material_tension'] ?? false) === true
+                || ($turn['tension_class'] ?? null) === 'resolved_material_tension';
+        }));
+        $minorBoundedTensionCount = max(0, $boundedTensionCount - min($boundedTensionCount, $resolvedMaterialTensionCount));
 
         return [
             'round' => $round,
@@ -430,10 +455,15 @@ class StructuredNegotiationService
             'material_or_higher_conflict_count_after_round' => $materialConflictCount,
             'unresolved_material_conflict_count_after_round' => $materialConflictCount,
             'resolved_bounded_tension_count_after_round' => $boundedTensionCount,
+            'resolved_material_tension_count_after_round' => $resolvedMaterialTensionCount,
+            'minor_bounded_tension_count_after_round' => $minorBoundedTensionCount,
             'immediate_alignment_detected' => $round === 1 && $materialConflictCount === 0,
             'summary' => $this->roundNarrativeSummary($round, $status, $materialConflictCount, $boundedTensionCount),
             'skip_reason' => $skipReason,
             'why_skipped' => $this->whyRoundSkipped($round, $status),
+            'why_round_2_skipped' => $round === 1 && $materialConflictCount === 0
+                ? 'Round 2 is only required for unresolved material or critical conflicts. Material tensions were already resolved in Round 1.'
+                : null,
             'bounded_context_note' => $boundedResolution['bounded_context_note'],
             'unsafe_part_rejected' => $boundedResolution['unsafe_part_rejected'],
             'safe_part_preserved' => $boundedResolution['safe_part_preserved'],
@@ -656,7 +686,7 @@ class StructuredNegotiationService
         }
 
         if ($domain === 'activation' && $signals['activation_weak']) {
-            return $this->response($output, 'Ads Agent', 'soft_operating_constraint', 'minor', 'Activation does not create an unresolved material objection because Ads already avoids aggressive scaling, but session-to-core-action conversion remains a soft operating constraint.', $this->evidenceRefs($metricsContext, [
+            return $this->response($output, 'Ads Agent', 'soft_operating_constraint', 'material', 'Activation does not create an unresolved material objection because Ads already avoids aggressive scaling, but session-to-core-action conversion materially constrains acquisition scaling.', $this->evidenceRefs($metricsContext, [
                 'metrics_context.generic_metrics_context.activation.core_action_success_rate_from_entry',
                 'metrics_context.generic_metrics_context.activation.core_action_success_rate_from_workspace',
                 'metrics_context.source_metric_refs.activation.core_action_success_users.source_path',
@@ -664,9 +694,12 @@ class StructuredNegotiationService
                 'metrics_context.activation_metrics.metrics_7d.food_add_success_rate_from_workspace',
             ], ['activation_health', 'workspace_or_food_success_rate']), 'Keep acquisition conservative until the first-core-action path improves.', $output['confidence'], [
                 'response_to_challenge' => 'warn',
-                'conflict_after_response' => 'bounded',
-                'residual_conflict' => 'minor',
-                'ui_label' => 'Soft Operating Constraint - already bounded',
+                'conflict_after_response' => 'resolved',
+                'residual_conflict' => 'resolved_material_tension',
+                'tension_class' => 'resolved_material_tension',
+                'is_unresolved_material_conflict' => false,
+                'is_resolved_material_tension' => true,
+                'ui_label' => 'Resolved Material Tension - already bounded',
                 'display_type' => 'soft_operating_constraint',
             ]);
         }
@@ -683,7 +716,7 @@ class StructuredNegotiationService
         }
 
         if ($domain === 'retention' && $signals['retention_weak']) {
-            return $this->response($output, 'Ads Agent', 'soft_operating_constraint', 'minor', 'Retention does not create an unresolved material objection because acquisition is already conservative, but D1 habit remains a soft operating constraint.', $this->evidenceRefs($metricsContext, [
+            return $this->response($output, 'Ads Agent', 'soft_operating_constraint', 'material', 'Retention does not create an unresolved material objection because acquisition is already conservative, but D1 habit materially constrains scaling.', $this->evidenceRefs($metricsContext, [
                 'metrics_context.generic_metrics_context.retention.d1_rate',
                 'metrics_context.generic_metrics_context.retention.habit_7d_rate',
                 'metrics_context.generic_metrics_context.retention.avg_active_days_7d',
@@ -691,9 +724,12 @@ class StructuredNegotiationService
                 'metrics_context.retention_metrics.metrics_7d_avg.habit_7d_rate',
             ], ['d1_retention_rate', 'habit_7d_rate', 'retention_health']), 'Prioritize D1 habit repair before acquisition or monetization pressure.', $output['confidence'], [
                 'response_to_challenge' => 'warn',
-                'conflict_after_response' => 'bounded',
-                'residual_conflict' => 'minor',
-                'ui_label' => 'Soft Operating Constraint - already bounded',
+                'conflict_after_response' => 'resolved',
+                'residual_conflict' => 'resolved_material_tension',
+                'tension_class' => 'resolved_material_tension',
+                'is_unresolved_material_conflict' => false,
+                'is_resolved_material_tension' => true,
+                'ui_label' => 'Resolved Material Tension - already bounded',
                 'display_type' => 'soft_operating_constraint',
             ]);
         }
@@ -719,7 +755,7 @@ class StructuredNegotiationService
         if ($domain === 'ads' && ($signals['activation_weak'] || $signals['retention_weak'] || $signals['guardrail_blocks_scaling'])) {
             $campaignPath = $this->adsCampaignPathPrefix($metricsContext);
 
-            return $this->response($output, 'Retention Agent', 'partial_concession', 'minor', 'Ads Agent made a safety-bounded partial concession: aggressive scaling is rejected, but the safe cautious controlled reset-campaign test or monitor-reset posture is preserved.', $this->evidenceRefs($metricsContext, [
+            return $this->response($output, 'Retention Agent', 'partial_concession', 'material', 'Ads Agent made a safety-bounded partial concession: aggressive scaling is rejected, but the safe cautious controlled reset-campaign test or monitor-reset posture is preserved.', $this->evidenceRefs($metricsContext, [
                 'metrics_context.generic_metrics_context.ads.cost_per_conversion',
                 'metrics_context.generic_metrics_context.ads.conversion_rate',
                 'metrics_context.generic_metrics_context.retention.d1_rate',
@@ -729,6 +765,9 @@ class StructuredNegotiationService
             ], ['ads_quality', 'activation_health', 'retention_health', 'blocked_actions']), 'Reject aggressive scaling; preserve a cautious controlled test or monitor-reset campaign with stable budget and downstream activation/retention checks.', $output['confidence'], [
                 'bounded_safe_context_received' => true,
                 'concession_type' => 'safety_bounded_partial_concession',
+                'tension_class' => 'resolved_material_tension',
+                'is_unresolved_material_conflict' => false,
+                'is_resolved_material_tension' => true,
                 'blind_concession' => false,
                 'unsafe_part_rejected' => 'aggressive ads scaling or broad budget increase while activation/retention quality is weak',
                 'safe_part_preserved' => 'cautious controlled test / monitor reset campaign with stable budget and downstream checks',
@@ -900,10 +939,13 @@ class StructuredNegotiationService
             $tensions[] = $this->boundedTension([
                 'conflict_id' => 'tension_ads_efficiency_vs_activation_retention_constraints',
                 'title' => 'Ads efficiency vs activation/retention constraints',
+                'severity' => 'material',
                 'status' => 'resolved_in_round_1',
                 'resolution_mode' => 'safety_bounded_partial_concession',
-                'domain_only_tension' => 'Ads efficiency supports monitoring the reset successor campaign and possibly running a cautious controlled test.',
-                'bounded_system_resolution' => 'Reject aggressive scaling; preserve only cautious controlled testing with stable budget and downstream quality checks.',
+                'domain_only_tension' => 'Ads evidence may support continuing or testing the reset successor campaign.',
+                'bounded_system_resolution' => 'Reject aggressive scaling; preserve only cautious controlled testing with stable budget and downstream activation/retention checks.',
+                'why_material' => 'This tension changes the acquisition decision from possible scale/continuation to guarded evaluation and prevents inefficient spend while activation and D1 habit remain constrained.',
+                'why_not_unresolved' => 'Ads Agent already rejected aggressive scaling and preserved only the safe controlled-test posture.',
                 'supporting_agents' => ['Activation Agent', 'Retention Agent', 'Ads Agent'],
                 'evidence_refs' => [
                     'metrics_context.generic_metrics_context.activation.core_action_success_rate_from_entry',
@@ -918,10 +960,13 @@ class StructuredNegotiationService
             $tensions[] = $this->boundedTension([
                 'conflict_id' => 'tension_monetization_signal_vs_low_sample',
                 'title' => 'Monetization active signal vs low purchase sample',
+                'severity' => 'material',
                 'status' => 'bounded_in_round_1',
                 'resolution_mode' => 'value_gated_monetization',
                 'domain_only_tension' => 'Paywall is being reached and purchase signal exists.',
-                'bounded_system_resolution' => 'Do not increase broad paywall pressure; keep monetization value-gated because purchase_success_users is below minimum sample threshold.',
+                'bounded_system_resolution' => 'Do not increase broad paywall pressure; keep monetization value-gated because purchase_success_users is below minimum sample threshold and retention depth is weak.',
+                'why_material' => 'This tension constrains monetization pressure and prevents overreacting to low-sample purchase data.',
+                'why_not_unresolved' => 'Monetization Agent already recommends value-gated paywall instead of broad pressure.',
                 'supporting_agents' => ['Monetization Agent', 'Activation Agent', 'Retention Agent'],
                 'evidence_refs' => [
                     'metrics_context.generic_metrics_context.monetization.purchase_success_users',
@@ -934,10 +979,13 @@ class StructuredNegotiationService
             $tensions[] = $this->boundedTension([
                 'conflict_id' => 'tension_forecast_watch_vs_decision_authority',
                 'title' => 'Forecast watch signal vs final decision authority',
+                'severity' => 'minor',
                 'status' => 'bounded_in_round_1',
                 'resolution_mode' => 'forecast_as_supporting_guardrail',
                 'domain_only_tension' => 'Forecast can strengthen caution because trust is medium-high.',
                 'bounded_system_resolution' => 'Use forecast as weighted evidence only; do not let it override deterministic guardrail and mature actuals.',
+                'why_material' => null,
+                'why_not_unresolved' => 'Forecast is used as supporting guardrail evidence and does not override deterministic or mature actual data.',
                 'supporting_agents' => ['Tomorrow Forecast Agent', 'Final Decision Agent'],
                 'evidence_refs' => [
                     'metrics_context.tomorrow_forecast_metrics.risk_flags',
@@ -958,7 +1006,7 @@ class StructuredNegotiationService
             'conflict_type' => 'bounded_tension',
             'topic' => $input['title'],
             'title' => $input['title'],
-            'severity' => 'minor',
+            'severity' => $input['severity'] ?? 'minor',
             'status' => $input['status'],
             'detected_in_round' => 1,
             'resolved_in_round' => 1,
@@ -972,11 +1020,15 @@ class StructuredNegotiationService
             'supporting_agents' => $input['supporting_agents'],
             'agents_involved' => $input['supporting_agents'],
             'evidence_refs' => $input['evidence_refs'],
+            'why_material' => $input['why_material'] ?? null,
+            'why_not_unresolved' => $input['why_not_unresolved'] ?? 'The bounded-system recommendation already rejects the unsafe interpretation and preserves only safe action.',
             'evidence_summary' => array_map(function (string $ref) {
                 return 'Evidence ref: ' . $ref;
             }, $input['evidence_refs']),
             'evidence' => $input['evidence_refs'],
             'is_unresolved_material_conflict' => false,
+            'is_resolved_material_tension' => in_array($input['severity'] ?? 'minor', ['material', 'critical'], true),
+            'tension_class' => in_array($input['severity'] ?? 'minor', ['material', 'critical'], true) ? 'resolved_material_tension' : 'minor_bounded_tension',
         ];
     }
 
@@ -1053,10 +1105,10 @@ class StructuredNegotiationService
     private function summarizeNegotiation(array $agentResponses, array $conflicts): array
     {
         $materialConflictCount = count(array_filter($conflicts, function (array $conflict) {
-            return ($conflict['severity'] ?? null) === 'material' && ($conflict['status'] ?? 'open') !== 'resolved';
+            return ($conflict['severity'] ?? null) === 'material' && ($conflict['is_unresolved_material_conflict'] ?? false) === true;
         }));
         $criticalConflictCount = count(array_filter($conflicts, function (array $conflict) {
-            return ($conflict['severity'] ?? null) === 'critical' && ($conflict['status'] ?? 'open') !== 'resolved';
+            return ($conflict['severity'] ?? null) === 'critical' && ($conflict['is_unresolved_material_conflict'] ?? false) === true;
         }));
         $boundedTensionCount = count(array_filter($conflicts, function (array $conflict) {
             return ($conflict['type'] ?? null) === 'bounded_tension' || ($conflict['conflict_type'] ?? null) === 'bounded_tension';
@@ -1064,6 +1116,15 @@ class StructuredNegotiationService
         $resolvedBoundedTensionCount = count(array_filter($conflicts, function (array $conflict) {
             return (($conflict['type'] ?? null) === 'bounded_tension' || ($conflict['conflict_type'] ?? null) === 'bounded_tension')
                 && in_array($conflict['status'] ?? '', ['resolved_in_round_1', 'bounded_in_round_1', 'resolved'], true);
+        }));
+        $resolvedMaterialTensionCount = count(array_filter($conflicts, function (array $conflict) {
+            return (($conflict['type'] ?? null) === 'bounded_tension' || ($conflict['conflict_type'] ?? null) === 'bounded_tension')
+                && in_array($conflict['severity'] ?? 'none', ['material', 'critical'], true)
+                && ($conflict['is_resolved_material_tension'] ?? false) === true;
+        }));
+        $minorBoundedTensionCount = count(array_filter($conflicts, function (array $conflict) {
+            return (($conflict['type'] ?? null) === 'bounded_tension' || ($conflict['conflict_type'] ?? null) === 'bounded_tension')
+                && ($conflict['severity'] ?? 'none') === 'minor';
         }));
 
         return [
@@ -1074,9 +1135,17 @@ class StructuredNegotiationService
             'material_conflict_count' => $materialConflictCount,
             'critical_conflict_count' => $criticalConflictCount,
             'material_or_higher_conflict_count' => $materialConflictCount + $criticalConflictCount,
+            'unresolved_material_or_higher_conflict_count' => $materialConflictCount + $criticalConflictCount,
             'unresolved_material_conflict_count' => $materialConflictCount + $criticalConflictCount,
+            'material_tension_count' => $resolvedMaterialTensionCount,
+            'resolved_material_tension_count' => $resolvedMaterialTensionCount,
+            'material_but_resolved_tension_count' => $resolvedMaterialTensionCount,
+            'minor_bounded_tension_count' => $minorBoundedTensionCount,
+            'minor_bounded_caution_count' => $minorBoundedTensionCount,
             'resolved_material_conflict_count' => count(array_filter($conflicts, function (array $conflict) {
                 return in_array($conflict['severity'] ?? 'none', ['material', 'critical'], true)
+                    && ($conflict['type'] ?? null) !== 'bounded_tension'
+                    && ($conflict['conflict_type'] ?? null) !== 'bounded_tension'
                     && in_array($conflict['status'] ?? '', ['resolved', 'resolved_in_round_1'], true);
             })),
             'bounded_tension_count' => $boundedTensionCount,
@@ -1107,12 +1176,33 @@ class StructuredNegotiationService
                 return ($response['response_type'] ?? null) === 'support';
             })),
             'count_semantics' => [
-                'total_conflict_count' => 'Unresolved material or critical conflicts only; excludes bounded soft tensions.',
+                'total_conflict_count' => 'Deprecated UI label. Means unresolved hard conflicts only.',
+                'unresolved_hard_conflict_count' => 'Material or critical conflicts still open after negotiation.',
+                'resolved_material_tension_count' => 'Business-important tensions resolved or bounded without requiring Round 2.',
+                'minor_bounded_caution_count' => 'Minor cautions that do not change the operating decision.',
                 'revised_recommendation_count' => 'Strict explicit revised_recommendation turns only; excludes safety-bounded partial concessions.',
                 'partial_concession_count' => 'Turns where an agent rejects unsafe interpretation while preserving safe action.',
-                'bounded_resolution_count' => 'Soft tensions resolved or bounded without requiring Round 2.',
+                'bounded_resolution_count' => 'Resolved material tensions and minor bounded cautions handled without requiring Round 2.',
             ],
+            'total_conflict_count_semantics' => 'Deprecated UI label. Means unresolved hard conflicts only.',
             'recommended_next_step' => 'Send conflict matrix to orchestrator evidence assembly.',
+        ];
+    }
+
+    private function buildUiSummary(array $summary, array $execution, int $maxRounds): array
+    {
+        $unresolvedHardConflictCount = (int) ($summary['total_conflict_count'] ?? 0);
+        $roundsCompleted = (int) ($execution['rounds_completed'] ?? 0);
+        $round2SkippedByPolicy = $unresolvedHardConflictCount === 0 && $roundsCompleted < 2;
+
+        return [
+            'unresolved_hard_conflict_count' => $unresolvedHardConflictCount,
+            'resolved_material_tension_count' => (int) ($summary['resolved_material_tension_count'] ?? 0),
+            'minor_bounded_caution_count' => (int) ($summary['minor_bounded_tension_count'] ?? 0),
+            'rounds_completed' => $roundsCompleted,
+            'rounds_supported' => $maxRounds,
+            'round_2_status' => $round2SkippedByPolicy ? 'skipped_by_policy' : ($roundsCompleted >= 2 ? 'completed' : 'available_if_unresolved_hard_conflicts_remain'),
+            'round_2_skip_reason' => $round2SkippedByPolicy ? 'All material tensions were resolved in Round 1.' : null,
         ];
     }
 
@@ -1143,6 +1233,9 @@ class StructuredNegotiationService
                 'conflict_after_response' => $response['conflict_after_response'] ?? 'none',
                 'residual_conflict' => $response['residual_conflict'] ?? 'none',
                 'residual_conflict_severity' => $response['residual_conflict_severity'] ?? 'none',
+                'tension_class' => $response['tension_class'] ?? null,
+                'is_unresolved_material_conflict' => $response['is_unresolved_material_conflict'] ?? false,
+                'is_resolved_material_tension' => $response['is_resolved_material_tension'] ?? false,
                 'why_no_further_negotiation_needed' => $response['why_no_further_negotiation_needed'] ?? null,
                 'ui_label' => $response['ui_label'] ?? null,
             ];
@@ -1157,7 +1250,7 @@ class StructuredNegotiationService
             'support' => 'supports',
             'objection' => 'objects to',
             'risk_warning' => 'warns',
-            'soft_operating_constraint' => 'sets a bounded soft constraint for',
+            'soft_operating_constraint' => 'sets a bounded operating constraint for',
             'bounded_constraint_warning' => 'sets a bounded constraint for',
             'request_evidence' => 'requests evidence from',
             'revised_recommendation' => 'revises recommendation toward',
@@ -1170,12 +1263,20 @@ class StructuredNegotiationService
 
     private function buildBaselineComparison(array $agentResponses, array $conflicts): array
     {
-        $materialConflictCount = count(array_filter($conflicts, function (array $conflict) {
-            return in_array($conflict['severity'] ?? 'none', ['material', 'critical'], true);
+        $unresolvedConflictCount = count(array_filter($conflicts, function (array $conflict) {
+            return ($conflict['is_unresolved_material_conflict'] ?? false) === true;
+        }));
+        $resolvedMaterialTensionCount = count(array_filter($conflicts, function (array $conflict) {
+            return ($conflict['is_resolved_material_tension'] ?? false) === true;
+        }));
+        $minorBoundedTensionCount = count(array_filter($conflicts, function (array $conflict) {
+            return (($conflict['type'] ?? null) === 'bounded_tension' || ($conflict['conflict_type'] ?? null) === 'bounded_tension')
+                && ($conflict['severity'] ?? 'none') === 'minor';
         }));
         $boundedTensionCount = count(array_filter($conflicts, function (array $conflict) {
             return ($conflict['type'] ?? null) === 'bounded_tension' || ($conflict['conflict_type'] ?? null) === 'bounded_tension';
         }));
+        $missedOperatingConstraints = $this->missedOperatingConstraints($conflicts);
         $unsafePreventionBasis = $this->unsafePreventionBasis($agentResponses, $conflicts);
 
         $responseCount = max(1, count($agentResponses));
@@ -1189,15 +1290,22 @@ class StructuredNegotiationService
         return [
             'single_agent_baseline' => [
                 'recommendation' => 'Use the strongest individual agent recommendation without cross-agent conflict screening.',
-                'missed_conflicts' => $materialConflictCount,
+                'missed_conflicts' => $unresolvedConflictCount,
+                'missed_unresolved_conflicts' => $unresolvedConflictCount,
+                'missed_resolved_material_tensions' => $resolvedMaterialTensionCount,
+                'missed_minor_bounded_tensions' => $minorBoundedTensionCount,
                 'missed_soft_tensions' => $boundedTensionCount,
+                'missed_operating_constraints' => $missedOperatingConstraints,
                 'unsafe_recommendation_detected' => false,
                 'evidence_coverage_score' => min(100, max(40, (int) round(($evidenceBackedResponses / $responseCount) * 70))),
                 'caveat_coverage_score' => min(100, max(30, (int) round(($caveatResponses / $responseCount) * 60))),
             ],
             'agent_society' => [
                 'recommendation' => 'Use structured negotiation and conflict matrix before the Final Decision Agent resolves the operating verdict.',
-                'conflicts_detected' => $materialConflictCount,
+                'conflicts_detected' => $unresolvedConflictCount,
+                'unresolved_conflicts_detected' => $unresolvedConflictCount,
+                'resolved_material_tensions_detected' => $resolvedMaterialTensionCount,
+                'minor_bounded_tensions_detected' => $minorBoundedTensionCount,
                 'soft_tensions_detected' => $boundedTensionCount,
                 'bounded_tension_count' => $boundedTensionCount,
                 'unsafe_recommendation_prevented' => !empty($unsafePreventionBasis),
@@ -1251,6 +1359,25 @@ class StructuredNegotiationService
         return array_values(array_unique($basis));
     }
 
+    private function missedOperatingConstraints(array $conflicts): array
+    {
+        $constraints = [];
+
+        foreach ($conflicts as $conflict) {
+            $id = $conflict['conflict_id'] ?? '';
+
+            if ($id === 'tension_ads_efficiency_vs_activation_retention_constraints') {
+                $constraints[] = 'ads_scaling_constrained_by_activation_retention';
+            }
+
+            if ($id === 'tension_monetization_signal_vs_low_sample') {
+                $constraints[] = 'paywall_pressure_constrained_by_low_sample_or_retention';
+            }
+        }
+
+        return array_values(array_unique($constraints));
+    }
+
     private function isMockProvider(): bool
     {
         return strtolower((string) env('LLM_PROVIDER', '')) === 'mock';
@@ -1292,15 +1419,17 @@ class StructuredNegotiationService
         $roundSummaries = [
             $this->buildRoundSummary(1, 'completed', $roundOneTurns, 1, null),
             $this->buildRoundSummary(2, 'completed', $roundTwoTurns, 0, null),
-            $this->buildRoundSummary(3, 'skipped', [], 0, 'Early Exit: material_or_higher_conflict_count = 0'),
+            $this->buildRoundSummary(3, 'skipped', [], 0, 'Early Exit: material tensions were resolved and no unresolved material or critical conflict remained.'),
         ];
         $execution = $this->buildExecutionSummary($agentResponses, $conflictMatrix, $summary, 3, 2, true, 'no_material_conflicts_remaining');
+        $uiSummary = $this->buildUiSummary($summary, $execution, 3);
 
         return [
             'round' => 2,
             'rounds_completed' => 2,
             'negotiation_type' => 'adaptive_structured_cross_examination',
             'execution' => $execution,
+            'ui_summary' => $uiSummary,
             'rules' => [
                 'max_rounds' => 3,
                 'early_exit_enabled' => true,
@@ -1372,10 +1501,16 @@ class StructuredNegotiationService
             'material_conflict_count' => $summary['material_conflict_count'] ?? 0,
             'critical_conflict_count' => $summary['critical_conflict_count'] ?? 0,
             'material_or_higher_conflict_count' => $summary['material_or_higher_conflict_count'] ?? 0,
+            'unresolved_material_or_higher_conflict_count' => $summary['unresolved_material_or_higher_conflict_count'] ?? ($summary['material_or_higher_conflict_count'] ?? 0),
             'unresolved_material_conflict_count' => $summary['unresolved_material_conflict_count'] ?? 0,
             'bounded_tension_count' => $summary['bounded_tension_count'] ?? 0,
             'total_bounded_tension_count' => $summary['total_bounded_tension_count'] ?? 0,
             'resolved_bounded_tension_count' => $summary['resolved_bounded_tension_count'] ?? 0,
+            'material_tension_count' => $summary['material_tension_count'] ?? 0,
+            'resolved_material_tension_count' => $summary['resolved_material_tension_count'] ?? 0,
+            'material_but_resolved_tension_count' => $summary['material_but_resolved_tension_count'] ?? 0,
+            'minor_bounded_tension_count' => $summary['minor_bounded_tension_count'] ?? 0,
+            'minor_bounded_caution_count' => $summary['minor_bounded_caution_count'] ?? 0,
             'soft_operating_tension_count' => $summary['soft_operating_tension_count'] ?? 0,
             'partial_concession_count' => $summary['partial_concession_count'] ?? 0,
             'safety_bounded_revision_count' => $summary['safety_bounded_revision_count'] ?? 0,
@@ -1449,7 +1584,10 @@ class StructuredNegotiationService
             'why_no_further_negotiation_needed' => $meta['why_no_further_negotiation_needed'] ?? ($source['why_no_further_negotiation_needed'] ?? null),
             'display_type' => $meta['display_type'] ?? null,
             'ui_label' => $meta['ui_label'] ?? null,
-            'has_unresolved_material_objection' => in_array($severity, ['material', 'critical'], true) && $conflictAfterResponse !== 'resolved',
+            'tension_class' => $meta['tension_class'] ?? null,
+            'is_unresolved_material_conflict' => $meta['is_unresolved_material_conflict'] ?? (in_array($severity, ['material', 'critical'], true) && $conflictAfterResponse !== 'resolved'),
+            'is_resolved_material_tension' => $meta['is_resolved_material_tension'] ?? (in_array($severity, ['material', 'critical'], true) && $conflictAfterResponse === 'resolved'),
+            'has_unresolved_material_objection' => $meta['is_unresolved_material_conflict'] ?? (in_array($severity, ['material', 'critical'], true) && $conflictAfterResponse !== 'resolved'),
         ];
     }
 
@@ -1650,15 +1788,15 @@ class StructuredNegotiationService
     private function roundNarrativeSummary(int $round, string $status, int $materialConflictCount, int $boundedTensionCount): ?string
     {
         if ($round === 1 && $status === 'completed') {
-            return 'Agents surfaced soft cross-domain tensions. Because the challenged recommendations were already bounded by safe context, no unresolved material conflict remained.';
+            return 'Agents surfaced material business tensions and minor cautions. The material tensions were resolved in Round 1 because unsafe actions were rejected while safe controlled actions were preserved.';
         }
 
         if ($status === 'skipped' && $round === 2) {
-            return 'Revision/rebuttal was skipped because only bounded soft tensions remained after Round 1.';
+            return 'Skipped because all material tensions were resolved in Round 1.';
         }
 
         if ($status === 'skipped' && $round === 3) {
-            return 'Escalation was skipped because no unresolved material or critical conflict existed.';
+            return 'Skipped because no unresolved material or critical conflict required escalation.';
         }
 
         return $boundedTensionCount > 0 || $materialConflictCount === 0 ? 'No unresolved material or critical conflict remained.' : null;
@@ -1671,11 +1809,11 @@ class StructuredNegotiationService
         }
 
         if ($round === 2) {
-            return 'Only bounded soft tensions remained; no revision/rebuttal round was required.';
+            return 'Skipped because all material tensions were resolved in Round 1.';
         }
 
         if ($round === 3) {
-            return 'No unresolved material or critical conflict existed.';
+            return 'Skipped because no unresolved material or critical conflict required escalation.';
         }
 
         return null;
@@ -1701,11 +1839,11 @@ class StructuredNegotiationService
     {
         if ($earlyExitReason === 'no_material_conflicts_remaining') {
             if ($round === 2) {
-                return 'Early Exit: no unresolved material or critical conflicts remained after Round 1.';
+                return 'Skipped because all material tensions were resolved in Round 1.';
             }
 
             if ($round === 3) {
-                return 'Early Exit: escalation is only used for unresolved material or critical conflicts.';
+                return 'Skipped because no unresolved material or critical conflict required escalation.';
             }
 
             return 'Early exit: bounded Round 1 review left material_or_higher_conflict_count = ' . $materialConflictCount . ', so no Round 2 was needed.';
