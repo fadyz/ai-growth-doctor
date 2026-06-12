@@ -86,6 +86,8 @@ class AiGrowthDoctorGraphController extends Controller
                     ?? ($audit['full_structured_negotiation']['conflicts'] ?? []),
                 'negotiation_summary' => $audit['full_structured_negotiation']['summary'] ?? [],
                 'orchestrator_evidence_assembly' => $audit['orchestrator_evidence_assembly'] ?? [],
+                'quantitative_baseline_comparison' => $audit['quantitative_baseline_comparison']
+                    ?? ($audit['full_structured_negotiation']['quantitative_baseline_comparison'] ?? []),
             ],
         ];
 

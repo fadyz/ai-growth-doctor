@@ -186,10 +186,10 @@ export AI_OUTPUT_LANGUAGE="Indonesian"
 make dev
 ```
 
-To use Sumopod:
+To use Qwen:
 
 ```bash
-export SUMOPOD_API_KEY="your_api_key"
+export QWEN_API_KEY="your_api_key"
 make dev
 ```
 

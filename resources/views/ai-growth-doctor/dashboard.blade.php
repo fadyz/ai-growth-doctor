@@ -105,6 +105,26 @@
         $baselineComparison = $structuredNegotiation['baseline_comparison'] ?? [];
         $singleAgentBaseline = $baselineComparison['single_agent_baseline'] ?? [];
         $agentSocietyBaseline = $baselineComparison['agent_society'] ?? [];
+        $quantitativeBaselineComparison = $decisionPackage['quantitative_baseline_comparison']
+            ?? ($structuredNegotiation['quantitative_baseline_comparison'] ?? ($analysis['quantitative_baseline_comparison'] ?? []));
+        $quantitativeSingleAgent = $quantitativeBaselineComparison['single_agent_baseline'] ?? [];
+        $quantitativeAgentSociety = $quantitativeBaselineComparison['agent_society'] ?? [];
+        $quantitativeDelta = $quantitativeBaselineComparison['delta'] ?? [];
+        $quantitativeRows = [
+            ['Evidence domains used', 'evidence_domains_used'],
+            ['Source metric refs used', 'source_metric_ref_count'],
+            ['Resolved material tensions detected', 'resolved_material_tensions_detected'],
+            ['Minor bounded cautions detected', 'minor_bounded_cautions_detected'],
+            ['Safety-bounded revisions', 'safety_bounded_revisions'],
+            ['Guardrail blocks used', 'guardrail_blocks_used'],
+            ['Action items', 'action_items_count'],
+            ['Action domains', 'action_domains_count'],
+            ['Cross-domain constraints', 'cross_domain_constraints_count'],
+            ['Evidence coverage score', 'evidence_coverage_score'],
+            ['Caveat coverage score', 'caveat_coverage_score'],
+            ['Decision completeness score', 'decision_completeness_score'],
+            ['Unsafe/overbroad action risk', 'unsafe_or_overbroad_action_risk'],
+        ];
         $forecastCalibration = $analysis['evaluations']['forecast_model_calibration'] ?? [];
         $forecastCalibrationTrustScore = $forecastCalibrationDecisionImpact['trust_score']
             ?? ($forecastCalibration['trust_score']['updated_score'] ?? null);
@@ -2244,28 +2264,41 @@
             </div>
         </div>
 
-        <div class="bg-white rounded-2xl shadow-sm border border-slate-200 mb-8 overflow-hidden">
+        <div class="bg-white rounded-2xl shadow-sm border border-slate-200 mb-8 overflow-hidden" x-data="{ openAgentSociety: false }">
             @if (empty($structuredNegotiation))
-                <div class="p-5">
-                    <div class="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400 mb-1">Agent Society Layer</div>
-                    <h2 class="text-xl font-bold">Adaptive Structured Negotiation</h2>
-                    <p class="text-sm text-slate-500 mt-1">Structured negotiation was not run for this analysis.</p>
+                <button type="button" @click="openAgentSociety = !openAgentSociety" class="w-full text-left p-5 hover:bg-slate-50 transition">
+                    <div class="flex items-start justify-between gap-4">
+                        <div>
+                            <div class="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400 mb-1">Agent Society Layer</div>
+                            <h2 class="text-xl font-bold">Adaptive Structured Negotiation</h2>
+                            <p class="text-sm text-slate-500 mt-1">Structured negotiation was not run for this analysis.</p>
+                        </div>
+                        <div class="text-slate-400 text-sm transition-transform duration-300" :class="openAgentSociety ? 'rotate-180' : ''">⌄</div>
+                    </div>
+                </button>
+                <div x-show="openAgentSociety" x-cloak x-transition class="px-5 pb-5">
+                    <div class="rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">
+                        No Agent Society negotiation payload is available for this run.
+                    </div>
                 </div>
             @else
-                <div class="p-5 border-b border-slate-200">
+                <button type="button" @click="openAgentSociety = !openAgentSociety" class="w-full text-left p-5 hover:bg-slate-50 transition">
                     <div class="flex flex-col md:flex-row md:items-start md:justify-between gap-3">
                         <div>
                             <div class="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400 mb-1">Agent Society Layer</div>
                             <h2 class="text-xl font-bold">Adaptive Structured Negotiation</h2>
                             <p class="text-sm text-slate-500 mt-1">Peer specialist summaries are examined in up to three evidence-bound rounds with early exit when material conflicts are resolved.</p>
                         </div>
-                        <span class="inline-flex w-fit rounded-full px-3 py-1 text-[11px] font-semibold bg-slate-100 text-slate-700 ring-1 ring-slate-200">
-                            {{ $negotiationExecution['rounds_completed'] ?? ($structuredNegotiation['rounds_completed'] ?? ($structuredNegotiation['round'] ?? 0)) }} / {{ $negotiationRules['max_rounds'] ?? 3 }} ROUNDS
-                        </span>
+                        <div class="flex items-center gap-3">
+                            <span class="inline-flex w-fit rounded-full px-3 py-1 text-[11px] font-semibold bg-slate-100 text-slate-700 ring-1 ring-slate-200">
+                                {{ $negotiationExecution['rounds_completed'] ?? ($structuredNegotiation['rounds_completed'] ?? ($structuredNegotiation['round'] ?? 0)) }} / {{ $negotiationRules['max_rounds'] ?? 3 }} ROUNDS
+                            </span>
+                            <div class="text-slate-400 text-sm transition-transform duration-300" :class="openAgentSociety ? 'rotate-180' : ''">⌄</div>
+                        </div>
                     </div>
-                </div>
+                </button>
 
-                <div class="p-5">
+                <div x-show="openAgentSociety" x-cloak x-transition class="p-5 border-t border-slate-200">
                     <div class="grid grid-cols-1 md:grid-cols-3 gap-3 mb-5">
                         <div class="bg-emerald-50 border border-emerald-200 rounded-xl p-4">
                             <div class="text-xs text-emerald-700 mb-1">Resolved Material Tensions</div>
@@ -2439,7 +2472,71 @@
                         </div>
                     </div>
 
-                    @if (!empty($baselineComparison))
+                    @if (!empty($quantitativeBaselineComparison))
+                        <div>
+                            <div class="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-2 mb-4">
+                                <div>
+                                    <div class="font-semibold text-slate-900">Agent Society vs Single-Agent Baseline</div>
+                                    <div class="text-sm text-slate-500">Data-derived comparison from this run, not a fixed benchmark.</div>
+                                </div>
+                                <div class="text-xs px-3 py-1 rounded-full bg-slate-100 text-slate-600 w-fit">
+                                    {{ $quantitativeBaselineComparison['baseline_source_agent'] ?? 'Selected specialist' }}
+                                </div>
+                            </div>
+
+                            @if (!empty($quantitativeBaselineComparison['headline']))
+                                <div class="mb-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-950">
+                                    {{ $quantitativeBaselineComparison['headline'] }}
+                                </div>
+                            @endif
+
+                            <div class="overflow-x-auto border border-slate-200 rounded-xl">
+                                <table class="min-w-full text-sm">
+                                    <thead class="bg-slate-50 text-slate-600">
+                                        <tr>
+                                            <th class="text-left font-semibold px-4 py-3">Metric</th>
+                                            <th class="text-left font-semibold px-4 py-3">Single Agent Baseline</th>
+                                            <th class="text-left font-semibold px-4 py-3">Agent Society</th>
+                                            <th class="text-left font-semibold px-4 py-3">Delta</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody class="divide-y divide-slate-200">
+                                        @foreach ($quantitativeRows as $row)
+                                            @php
+                                                $label = $row[0];
+                                                $key = $row[1];
+                                                $baselineValue = $quantitativeSingleAgent[$key] ?? 'unknown';
+                                                $societyValue = $quantitativeAgentSociety[$key] ?? 'unknown';
+                                                $deltaValue = $key === 'unsafe_or_overbroad_action_risk'
+                                                    ? ($quantitativeDelta['unsafe_or_overbroad_action_risk_reduction'] ?? 'unknown')
+                                                    : ($quantitativeDelta[$key]['display'] ?? 'unknown');
+                                            @endphp
+                                            <tr class="bg-white">
+                                                <td class="px-4 py-3 font-medium text-slate-800">{{ $label }}</td>
+                                                <td class="px-4 py-3 text-slate-700">{{ is_bool($baselineValue) ? ($baselineValue ? 'yes' : 'no') : $baselineValue }}</td>
+                                                <td class="px-4 py-3 text-slate-900 font-semibold">{{ is_bool($societyValue) ? ($societyValue ? 'yes' : 'no') : $societyValue }}</td>
+                                                <td class="px-4 py-3 text-emerald-700 font-semibold">{{ $deltaValue }}</td>
+                                            </tr>
+                                        @endforeach
+                                    </tbody>
+                                </table>
+                            </div>
+
+                            <div class="mt-4 grid grid-cols-1 lg:grid-cols-2 gap-4">
+                                <div class="rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700">
+                                    Baseline is derived from the selected strongest single specialist output for this run. Agent Society uses guardrail-mediated specialist agents plus structured negotiation and final synthesis.
+                                </div>
+                                <div class="rounded-xl border border-slate-200 bg-white p-4 text-sm text-slate-700">
+                                    <div class="font-semibold text-slate-900 mb-2">Limitations</div>
+                                    <ul class="list-disc pl-5 space-y-1">
+                                        @foreach (($quantitativeBaselineComparison['limitations'] ?? ['This is a heuristic audit comparison, not causal proof.', 'A separate LLM rerun baseline can be added later.']) as $limitation)
+                                            <li>{{ $limitation }}</li>
+                                        @endforeach
+                                    </ul>
+                                </div>
+                            </div>
+                        </div>
+                    @elseif (!empty($baselineComparison))
                         <div>
                             <div class="font-semibold text-slate-900 mb-3">Baseline Comparison</div>
                             <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">

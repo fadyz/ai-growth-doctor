@@ -492,6 +492,31 @@ body {
   overflow-wrap: anywhere;
 }
 
+.agd-comparison-table {
+  display: grid;
+  grid-template-columns: minmax(130px, 1.1fr) repeat(3, minmax(92px, 0.9fr));
+  gap: 1px;
+  overflow: auto;
+  border: 1px solid #dbe3ee;
+  border-radius: 8px;
+  background: #dbe3ee;
+}
+
+.agd-comparison-table div {
+  min-width: 0;
+  padding: 8px;
+  background: #ffffff;
+  font-size: 12px;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.agd-comparison-table div:nth-child(-n + 4) {
+  background: #f8fafc;
+  color: #46566a;
+  font-weight: 700;
+}
+
 .agd-empty,
 .agd-loading,
 .agd-loading-fallback,

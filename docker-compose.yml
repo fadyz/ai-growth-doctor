@@ -14,14 +14,14 @@ services:
       DB_DATABASE: ai_growth_doctor
       DB_USERNAME: laravel
       DB_PASSWORD: secret
-      AI_PROVIDER: ${AI_PROVIDER:-openai}
+      AI_PROVIDER: ${AI_PROVIDER:-qwen}
       AI_OUTPUT_LANGUAGE: ${AI_OUTPUT_LANGUAGE:-English}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       OPENAI_MODEL: ${OPENAI_MODEL:-gpt-5.4-nano}
       OPENAI_BASE_URL: ${OPENAI_BASE_URL:-https://api.openai.com/v1}
-      SUMOPOD_API_KEY: ${SUMOPOD_API_KEY:-}
-      SUMOPOD_MODEL: ${SUMOPOD_MODEL:-gpt-5.4-nano}
-      SUMOPOD_BASE_URL: ${SUMOPOD_BASE_URL:-https://ai.sumopod.com}
+      QWEN_API_KEY: ${QWEN_API_KEY:-}
+      QWEN_MODEL: ${QWEN_MODEL:-qwen3.6-flash}
+      QWEN_BASE_URL: ${QWEN_BASE_URL:-https://dashscope-intl.aliyuncs.com/compatible-mode/v1}
       RUN_MIGRATIONS: "true"
     volumes:
       - vendor:/var/www/html/vendor
@@ -46,14 +46,14 @@ services:
       DB_DATABASE: ai_growth_doctor
       DB_USERNAME: laravel
       DB_PASSWORD: secret
-      AI_PROVIDER: ${AI_PROVIDER:-openai}
+      AI_PROVIDER: ${AI_PROVIDER:-qwen}
       AI_OUTPUT_LANGUAGE: ${AI_OUTPUT_LANGUAGE:-English}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       OPENAI_MODEL: ${OPENAI_MODEL:-gpt-5.4-nano}
       OPENAI_BASE_URL: ${OPENAI_BASE_URL:-https://api.openai.com/v1}
-      SUMOPOD_API_KEY: ${SUMOPOD_API_KEY:-}
-      SUMOPOD_MODEL: ${SUMOPOD_MODEL:-gpt-5.4-nano}
-      SUMOPOD_BASE_URL: ${SUMOPOD_BASE_URL:-https://ai.sumopod.com}
+      QWEN_API_KEY: ${QWEN_API_KEY:-}
+      QWEN_MODEL: ${QWEN_MODEL:-qwen3.6-flash}
+      QWEN_BASE_URL: ${QWEN_BASE_URL:-https://dashscope-intl.aliyuncs.com/compatible-mode/v1}
     volumes:
       - vendor:/var/www/html/vendor
       - ./storage:/var/www/html/storage

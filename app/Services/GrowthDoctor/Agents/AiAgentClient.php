@@ -308,12 +308,23 @@ class AiAgentClient
         $chatCompletionsUrl = $this->chatCompletionsUrl($apiBaseUrl);
 
         if (!$apiKey) {
+            $provider = env('AI_PROVIDER', 'openai');
+            $diagnosis = 'AI API key is not configured.';
+            
+            if ($provider === 'qwen') {
+                $diagnosis .= ' Set QWEN_API_KEY to enable AI agents.';
+            } elseif ($provider === 'sumopod') {
+                $diagnosis .= ' Set SUMOPOD_API_KEY to enable AI agents.';
+            } else {
+                $diagnosis .= ' Set OPENAI_API_KEY to enable AI agents.';
+            }
+            
             return [
                 'status' => 'disabled',
                 'result' => [
                     'agent' => $agentName,
                     'status' => 'disabled',
-                    'diagnosis' => 'AI API key is not configured. Set SUMOPOD_API_KEY or OPENAI_API_KEY to enable AI agents.',
+                    'diagnosis' => $diagnosis,
                 ],
             ];
         }
@@ -610,27 +621,61 @@ class AiAgentClient
 
     private function apiKey(): ?string
     {
-        return config('services.sumopod.api_key')
-            ?: env('SUMOPOD_API_KEY')
-            ?: config('services.openai.api_key')
+        $provider = env('AI_PROVIDER', 'openai');
+        
+        if ($provider === 'qwen') {
+            return config('services.qwen.api_key')
+                ?: env('QWEN_API_KEY');
+        } elseif ($provider === 'sumopod') {
+            return config('services.sumopod.api_key')
+                ?: env('SUMOPOD_API_KEY');
+        }
+        
+        return config('services.openai.api_key')
             ?: env('OPENAI_API_KEY');
     }
 
     private function model(): string
     {
-        return config('services.sumopod.model')
-            ?: env('SUMOPOD_MODEL')
-            ?: config('services.openai.model')
+        $provider = env('AI_PROVIDER', 'openai');
+        
+        if ($provider === 'qwen') {
+            return config('services.qwen.model')
+                ?: env('QWEN_MODEL')
+                ?: 'qwen-plus';
+        } elseif ($provider === 'sumopod') {
+            return config('services.sumopod.model')
+                ?: env('SUMOPOD_MODEL')
+                ?: 'gpt-5.4-nano';
+        }
+        
+        return config('services.openai.model')
             ?: env('OPENAI_MODEL')
             ?: 'gpt-5-nano';
     }
 
     private function apiBaseUrl(): string
     {
+        $provider = env('AI_PROVIDER', 'openai');
+        
+        if ($provider === 'qwen') {
+            return rtrim(
+                config('services.qwen.base_url')
+                    ?: env('QWEN_BASE_URL')
+                    ?: 'https://dashscope-intl.aliyuncs.com/compatible-mode/v1',
+                '/'
+            );
+        } elseif ($provider === 'sumopod') {
+            return rtrim(
+                config('services.sumopod.base_url')
+                    ?: env('SUMOPOD_BASE_URL')
+                    ?: 'https://ai.sumopod.com',
+                '/'
+            );
+        }
+        
         return rtrim(
-            config('services.sumopod.base_url')
-                ?: env('SUMOPOD_BASE_URL')
-                ?: config('services.openai.base_url')
+            config('services.openai.base_url')
                 ?: env('OPENAI_BASE_URL')
                 ?: 'https://api.openai.com/v1',
             '/'

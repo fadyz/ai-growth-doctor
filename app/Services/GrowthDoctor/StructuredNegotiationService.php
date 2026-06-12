@@ -1286,6 +1286,8 @@ class StructuredNegotiationService
         $caveatResponses = count(array_filter($agentResponses, function (array $response) {
             return in_array($response['response_type'] ?? 'none', ['objection', 'risk_warning', 'request_evidence', 'revised_recommendation', 'partial_concession', 'soft_operating_constraint'], true);
         }));
+        $evidenceCoverageScore = (int) round(($evidenceBackedResponses / $responseCount) * 100);
+        $caveatCoverageScore = (int) round(($caveatResponses / $responseCount) * 100);
 
         return [
             'single_agent_baseline' => [
@@ -1297,8 +1299,9 @@ class StructuredNegotiationService
                 'missed_soft_tensions' => $boundedTensionCount,
                 'missed_operating_constraints' => $missedOperatingConstraints,
                 'unsafe_recommendation_detected' => false,
-                'evidence_coverage_score' => min(100, max(40, (int) round(($evidenceBackedResponses / $responseCount) * 70))),
-                'caveat_coverage_score' => min(100, max(30, (int) round(($caveatResponses / $responseCount) * 60))),
+                'evidence_coverage_score' => $evidenceCoverageScore,
+                'caveat_coverage_score' => $caveatCoverageScore,
+                'legacy_note' => 'Legacy comparison retained for backward compatibility; quantitative_baseline_comparison contains the data-derived Track 3 audit table.',
             ],
             'agent_society' => [
                 'recommendation' => 'Use structured negotiation and conflict matrix before the Final Decision Agent resolves the operating verdict.',
@@ -1310,8 +1313,9 @@ class StructuredNegotiationService
                 'bounded_tension_count' => $boundedTensionCount,
                 'unsafe_recommendation_prevented' => !empty($unsafePreventionBasis),
                 'unsafe_prevention_basis' => $unsafePreventionBasis,
-                'evidence_coverage_score' => min(100, max(70, (int) round(($evidenceBackedResponses / $responseCount) * 100))),
-                'caveat_coverage_score' => min(100, max(65, (int) round(($caveatResponses / $responseCount) * 100))),
+                'evidence_coverage_score' => $evidenceCoverageScore,
+                'caveat_coverage_score' => $caveatCoverageScore,
+                'legacy_note' => 'Legacy comparison retained for backward compatibility; quantitative_baseline_comparison contains the data-derived Track 3 audit table.',
             ],
         ];
     }

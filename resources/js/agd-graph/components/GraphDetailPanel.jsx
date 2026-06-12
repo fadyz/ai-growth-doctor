@@ -24,7 +24,7 @@ export default function GraphDetailPanel({ graph, selectedNode }) {
   }
 
   if (selectedNode.type === 'negotiationNode') {
-    return <NegotiationDetails negotiation={graph.details?.structured_negotiation || {}} />;
+    return <NegotiationDetails graph={graph} negotiation={graph.details?.structured_negotiation || {}} />;
   }
 
   if (selectedNode.type === 'decisionNode') {
@@ -281,10 +281,11 @@ function AgentDetails({ graph, node }) {
   );
 }
 
-function NegotiationDetails({ negotiation }) {
+function NegotiationDetails({ graph, negotiation }) {
   const rules = negotiation.rules || {};
   const execution = negotiation.execution || {};
   const baseline = negotiation.baseline_comparison || {};
+  const quantitativeBaseline = graph.details?.quantitative_baseline_comparison || negotiation.quantitative_baseline_comparison || {};
 
   return (
     <aside className="agd-detail-panel">
@@ -354,27 +355,78 @@ function NegotiationDetails({ negotiation }) {
           emptyLabel={(negotiation.ui_summary?.resolved_material_tension_count ?? negotiation.summary?.resolved_material_tension_count ?? 0) > 0 ? 'No unresolved hard conflicts.' : 'No bounded cautions'}
         />
       </Section>
-      <Section title="Baseline Comparison">
-        <dl className="agd-detail-dl">
-          <dt>Single Agent missed unresolved conflicts</dt>
-          <dd>{baseline.single_agent_baseline?.missed_unresolved_conflicts ?? baseline.single_agent_baseline?.missed_conflicts ?? 'No data available'}</dd>
-          <dt>Single Agent missed resolved material tensions</dt>
-          <dd>{baseline.single_agent_baseline?.missed_resolved_material_tensions ?? 'No data available'}</dd>
-          <dt>Agent Society unresolved conflicts detected</dt>
-          <dd>{baseline.agent_society?.unresolved_conflicts_detected ?? baseline.agent_society?.conflicts_detected ?? 'No data available'}</dd>
-          <dt>Agent Society resolved material tensions detected</dt>
-          <dd>{baseline.agent_society?.resolved_material_tensions_detected ?? 'No data available'}</dd>
-          <dt>Unsafe prevented</dt>
-          <dd>{stringifyValue(baseline.agent_society?.unsafe_recommendation_prevented)}</dd>
-          <dt>Unsafe prevention basis</dt>
-          <dd>{asArray(baseline.agent_society?.unsafe_prevention_basis).join(' ') || 'No data available'}</dd>
-          <dt>Evidence coverage</dt>
-          <dd>{baseline.agent_society?.evidence_coverage_score ?? 'No data available'}</dd>
-          <dt>Caveat coverage</dt>
-          <dd>{baseline.agent_society?.caveat_coverage_score ?? 'No data available'}</dd>
-        </dl>
-      </Section>
+      {Object.keys(quantitativeBaseline).length > 0 ? (
+        <QuantitativeBaselineComparison comparison={quantitativeBaseline} />
+      ) : (
+        <Section title="Baseline Comparison">
+          <dl className="agd-detail-dl">
+            <dt>Single Agent missed unresolved conflicts</dt>
+            <dd>{baseline.single_agent_baseline?.missed_unresolved_conflicts ?? baseline.single_agent_baseline?.missed_conflicts ?? 'No data available'}</dd>
+            <dt>Single Agent missed resolved material tensions</dt>
+            <dd>{baseline.single_agent_baseline?.missed_resolved_material_tensions ?? 'No data available'}</dd>
+            <dt>Agent Society unresolved conflicts detected</dt>
+            <dd>{baseline.agent_society?.unresolved_conflicts_detected ?? baseline.agent_society?.conflicts_detected ?? 'No data available'}</dd>
+            <dt>Agent Society resolved material tensions detected</dt>
+            <dd>{baseline.agent_society?.resolved_material_tensions_detected ?? 'No data available'}</dd>
+            <dt>Unsafe prevented</dt>
+            <dd>{stringifyValue(baseline.agent_society?.unsafe_recommendation_prevented)}</dd>
+            <dt>Unsafe prevention basis</dt>
+            <dd>{asArray(baseline.agent_society?.unsafe_prevention_basis).join(' ') || 'No data available'}</dd>
+            <dt>Evidence coverage</dt>
+            <dd>{baseline.agent_society?.evidence_coverage_score ?? 'No data available'}</dd>
+            <dt>Caveat coverage</dt>
+            <dd>{baseline.agent_society?.caveat_coverage_score ?? 'No data available'}</dd>
+          </dl>
+        </Section>
+      )}
     </aside>
+  );
+}
+
+function QuantitativeBaselineComparison({ comparison }) {
+  const baseline = comparison.single_agent_baseline || {};
+  const society = comparison.agent_society || {};
+  const delta = comparison.delta || {};
+  const rows = [
+    ['Evidence domains used', 'evidence_domains_used'],
+    ['Source metric refs used', 'source_metric_ref_count'],
+    ['Resolved material tensions detected', 'resolved_material_tensions_detected'],
+    ['Minor bounded cautions detected', 'minor_bounded_cautions_detected'],
+    ['Safety-bounded revisions', 'safety_bounded_revisions'],
+    ['Guardrail blocks used', 'guardrail_blocks_used'],
+    ['Action items', 'action_items_count'],
+    ['Action domains', 'action_domains_count'],
+    ['Cross-domain constraints', 'cross_domain_constraints_count'],
+    ['Evidence coverage score', 'evidence_coverage_score'],
+    ['Caveat coverage score', 'caveat_coverage_score'],
+    ['Decision completeness score', 'decision_completeness_score'],
+    ['Unsafe/overbroad action risk', 'unsafe_or_overbroad_action_risk'],
+  ];
+
+  return (
+    <Section title="Agent Society vs Single-Agent Baseline">
+      <p className="agd-panel-subtitle">Data-derived comparison from this run, not a fixed benchmark.</p>
+      {comparison.headline ? <p>{comparison.headline}</p> : null}
+      <div className="agd-comparison-table">
+        <div>Metric</div>
+        <div>Single Agent Baseline</div>
+        <div>Agent Society</div>
+        <div>Delta</div>
+        {rows.map(([label, key]) => (
+          <React.Fragment key={key}>
+            <div>{label}</div>
+            <div>{stringifyValue(baseline[key])}</div>
+            <div>{stringifyValue(society[key])}</div>
+            <div>{key === 'unsafe_or_overbroad_action_risk' ? stringifyValue(delta.unsafe_or_overbroad_action_risk_reduction) : stringifyValue(delta[key]?.display)}</div>
+          </React.Fragment>
+        ))}
+      </div>
+      <p>
+        Baseline is derived from the selected strongest single specialist output for this run. Agent Society uses guardrail-mediated
+        specialist agents plus structured negotiation and final synthesis.
+      </p>
+      <EvidenceList items={comparison.limitations || ['This is a heuristic audit comparison, not causal proof.', 'A separate LLM rerun baseline can be added later.']} />
+    </Section>
   );
 }
 

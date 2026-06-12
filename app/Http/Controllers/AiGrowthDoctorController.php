@@ -10,6 +10,7 @@ use App\Services\GrowthDoctor\ForecastEvaluationService;
 use App\Services\GrowthDoctor\ForecastCalibrationService;
 use App\Services\GrowthDoctor\GuardrailPolicyEngine;
 use App\Services\GrowthDoctor\RunProgressStore;
+use App\Services\GrowthDoctor\AgentSocietyBaselineComparisonService;
 use App\Services\AiGrowthDoctor\AppProfileService;
 use App\Services\AiGrowthDoctor\GenericMetricMapperService;
 use App\Services\AiGrowthDoctor\MetricMappingService;
@@ -27,6 +28,7 @@ class AiGrowthDoctorController extends Controller
     private $appProfileService;
     private $metricMappingService;
     private $genericMetricMapperService;
+    private $baselineComparisonService;
 
     public function __construct(
         CheckpointRepository $checkpointRepository,
@@ -38,7 +40,8 @@ class AiGrowthDoctorController extends Controller
         RunProgressStore $runProgressStore,
         AppProfileService $appProfileService,
         MetricMappingService $metricMappingService,
-        GenericMetricMapperService $genericMetricMapperService
+        GenericMetricMapperService $genericMetricMapperService,
+        AgentSocietyBaselineComparisonService $baselineComparisonService
     ) {
         $this->checkpointRepository = $checkpointRepository;
         $this->metricsExtractor = $metricsExtractor;
@@ -50,6 +53,7 @@ class AiGrowthDoctorController extends Controller
         $this->appProfileService = $appProfileService;
         $this->metricMappingService = $metricMappingService;
         $this->genericMetricMapperService = $genericMetricMapperService;
+        $this->baselineComparisonService = $baselineComparisonService;
     }
 
     public function dashboard(Request $request)
@@ -216,6 +220,7 @@ class AiGrowthDoctorController extends Controller
             'conflict_matrix' => [],
             'negotiation_summary' => [],
             'orchestrator_evidence_assembly' => [],
+            'quantitative_baseline_comparison' => [],
             'charts' => [
                 'activation_trend' => [],
                 'retention_trend' => [],
@@ -335,6 +340,8 @@ class AiGrowthDoctorController extends Controller
         $aiTomorrowForecastAgent = $orchestration['agents']['ai_tomorrow_forecast_agent'] ?? [];
         $structuredNegotiation = $orchestration['structured_negotiation'] ?? [];
         $orchestratorEvidenceAssembly = $orchestration['orchestrator_evidence_assembly'] ?? [];
+        $quantitativeBaselineComparison = $orchestration['quantitative_baseline_comparison']
+            ?? ($structuredNegotiation['quantitative_baseline_comparison'] ?? []);
         $aiDecisionAgent = $orchestration['agents']['ai_final_decision_agent'] ?? [];
         $decisionScenarioSimulator = $orchestration['agents']['decision_scenario_simulator'] ?? [];
 
@@ -358,6 +365,7 @@ class AiGrowthDoctorController extends Controller
             'conflict_matrix' => $orchestration['conflict_matrix'] ?? ($structuredNegotiation['conflicts'] ?? []),
             'negotiation_summary' => $orchestration['negotiation_summary'] ?? ($structuredNegotiation['summary'] ?? []),
             'orchestrator_evidence_assembly' => $orchestratorEvidenceAssembly,
+            'quantitative_baseline_comparison' => $quantitativeBaselineComparison,
             'metrics' => [
                 'activation_metrics' => $activationMetrics,
                 'retention_metrics' => $retentionMetrics,
@@ -463,6 +471,7 @@ class AiGrowthDoctorController extends Controller
             'conflict_matrix' => $analysis['conflict_matrix'] ?? ($structuredNegotiation['conflict_matrix'] ?? []),
             'negotiation_summary' => $analysis['negotiation_summary'] ?? ($structuredNegotiation['summary'] ?? []),
             'orchestrator_evidence_assembly' => $this->compactOrchestratorEvidenceAssembly($analysis['orchestrator_evidence_assembly'] ?? []),
+            'quantitative_baseline_comparison' => $this->baselineComparisonService->compact($analysis['quantitative_baseline_comparison'] ?? []),
             'metrics' => $analysis['metrics'] ?? [],
             'evaluations' => $this->compactEvaluations($analysis['evaluations'] ?? []),
             'agents' => $this->compactAgents($agents),
@@ -489,6 +498,7 @@ class AiGrowthDoctorController extends Controller
             ],
             'conflict_matrix' => $analysis['conflict_matrix'] ?? ($structuredNegotiation['conflict_matrix'] ?? []),
             'revised_recommendations' => $structuredNegotiation['revised_recommendations'] ?? [],
+            'quantitative_baseline_comparison' => $analysis['quantitative_baseline_comparison'] ?? ($structuredNegotiation['quantitative_baseline_comparison'] ?? []),
             'final_decision' => $finalDecision,
             'scenario_simulator' => $analysis['agents']['decision_scenario_simulator']['result'] ?? [],
         ];
@@ -512,6 +522,7 @@ class AiGrowthDoctorController extends Controller
             'orchestrator_evidence_assembly' => $analysis['orchestrator_evidence_assembly'] ?? [],
             'full_evaluations' => $analysis['evaluations'] ?? [],
             'full_structured_negotiation' => $analysis['structured_negotiation'] ?? [],
+            'quantitative_baseline_comparison' => $analysis['quantitative_baseline_comparison'] ?? [],
             'full_agents' => $analysis['agents'] ?? [],
             'full_metrics' => $analysis['metrics'] ?? [],
         ];
@@ -588,6 +599,7 @@ class AiGrowthDoctorController extends Controller
             'revised_recommendations' => $negotiation['revised_recommendations'] ?? [],
             'summary' => $negotiation['summary'] ?? [],
             'baseline_comparison' => $negotiation['baseline_comparison'] ?? [],
+            'quantitative_baseline_comparison' => $this->baselineComparisonService->compact($negotiation['quantitative_baseline_comparison'] ?? []),
         ];
     }
 
@@ -597,6 +609,7 @@ class AiGrowthDoctorController extends Controller
             'present' => !empty($assembly),
             'conflict_matrix' => $assembly['conflict_matrix'] ?? [],
             'negotiation_summary' => $assembly['negotiation_summary'] ?? [],
+            'quantitative_baseline_comparison' => $this->baselineComparisonService->compact($assembly['quantitative_baseline_comparison'] ?? []),
             'final_decision_context_available_in_audit' => !empty($assembly['final_decision_context']),
             'audit_note' => 'Full orchestrator evidence assembly is stored in full_audit_trace.',
         ];

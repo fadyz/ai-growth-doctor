@@ -26,6 +26,7 @@ class AgentOrchestrator
     private $aiAgentClient;
     private $runProgressStore;
     private $structuredNegotiationService;
+    private $baselineComparisonService;
 
     public function __construct(
         ActivationAgent $activationAgent,
@@ -38,7 +39,8 @@ class AgentOrchestrator
         DecisionScenarioSimulator $decisionScenarioSimulator,
         AiAgentClient $aiAgentClient,
         RunProgressStore $runProgressStore,
-        StructuredNegotiationService $structuredNegotiationService
+        StructuredNegotiationService $structuredNegotiationService,
+        AgentSocietyBaselineComparisonService $baselineComparisonService
     ) {
         $this->activationAgent = $activationAgent;
         $this->retentionAgent = $retentionAgent;
@@ -51,6 +53,7 @@ class AgentOrchestrator
         $this->aiAgentClient = $aiAgentClient;
         $this->runProgressStore = $runProgressStore;
         $this->structuredNegotiationService = $structuredNegotiationService;
+        $this->baselineComparisonService = $baselineComparisonService;
     }
 
     public function run(array $metricsContext, ?string $trackedRunId = null): array
@@ -297,6 +300,29 @@ class AgentOrchestrator
         }
         $this->logAgentResponse($interactionLog, $runId, 'AI Final Decision Agent', $aiDecisionAgent);
 
+        $conflictMatrix = $structuredNegotiation['orchestrator_package']['conflict_matrix']
+            ?? ($structuredNegotiation['conflict_matrix'] ?? ($structuredNegotiation['conflicts'] ?? []));
+
+        $quantitativeBaselineComparison = $this->baselineComparisonService->compare([
+            'metrics_context' => $metricsContext,
+            'specialist_agents' => $specialistAgents,
+            'structured_negotiation' => $structuredNegotiation,
+            'conflict_matrix' => $conflictMatrix,
+            'final_decision' => $aiDecisionAgent,
+            'guardrail_policy' => $metricsContext['guardrail_policy'] ?? [],
+            'source_metric_refs' => $metricsContext['source_metric_refs'] ?? [],
+            'normalized_action_plan' => $this->normalizedActionPlan($aiDecisionAgent['result'] ?? []),
+        ]);
+
+        $structuredNegotiation['quantitative_baseline_comparison'] = $quantitativeBaselineComparison;
+        $orchestratorEvidenceAssembly['quantitative_baseline_comparison'] = $quantitativeBaselineComparison;
+        $this->logInteraction($interactionLog, $runId, 'Agent Society Baseline Comparison Service', 'orchestrator', 'quantitative_baseline_comparison', [
+            'baseline_mode' => $quantitativeBaselineComparison['baseline_mode'] ?? null,
+            'baseline_source_agent' => $quantitativeBaselineComparison['baseline_source_agent'] ?? null,
+            'headline' => $quantitativeBaselineComparison['headline'] ?? null,
+            'delta' => $quantitativeBaselineComparison['delta'] ?? [],
+        ]);
+
         $scenarioSimulationContext = [
             'metrics_context' => $metricsContext,
             'tomorrow_forecast_metrics' => $metricsContext['tomorrow_forecast_metrics'] ?? ($aiTomorrowForecastAgent['result']['tomorrow_forecast_metrics'] ?? []),
@@ -305,8 +331,7 @@ class AgentOrchestrator
             'ai_final_decision_agent' => $aiDecisionAgent,
             'specialist_agents' => $specialistAgents,
             'structured_negotiation' => $structuredNegotiation,
-            'conflict_matrix' => $structuredNegotiation['orchestrator_package']['conflict_matrix']
-                ?? ($structuredNegotiation['conflict_matrix'] ?? ($structuredNegotiation['conflicts'] ?? [])),
+            'conflict_matrix' => $conflictMatrix,
             'ai_tomorrow_forecast_agent' => $aiTomorrowForecastAgent,
             'ai_ads_agent' => $aiAdsAgent,
             'evaluations' => [
@@ -365,10 +390,10 @@ class AgentOrchestrator
                 'decision_scenario_simulator' => $decisionScenarioSimulation,
             ],
             'structured_negotiation' => $structuredNegotiation,
-            'conflict_matrix' => $structuredNegotiation['orchestrator_package']['conflict_matrix']
-                ?? ($structuredNegotiation['conflict_matrix'] ?? ($structuredNegotiation['conflicts'] ?? [])),
+            'conflict_matrix' => $conflictMatrix,
             'negotiation_summary' => $structuredNegotiation['summary'] ?? [],
             'orchestrator_evidence_assembly' => $orchestratorEvidenceAssembly,
+            'quantitative_baseline_comparison' => $quantitativeBaselineComparison,
             'interaction_log' => $interactionLog,
             'workflow' => [
                 'name' => 'AI Growth Doctor Multi-Agent Workflow',

@@ -82,6 +82,8 @@ class AiGrowthDoctorGraphBuilder
                 'agents' => $agents,
                 'structured_negotiation' => $structuredNegotiation,
                 'orchestrator_evidence_assembly' => $result['orchestrator_evidence_assembly'] ?? [],
+                'quantitative_baseline_comparison' => $result['quantitative_baseline_comparison']
+                    ?? ($structuredNegotiation['quantitative_baseline_comparison'] ?? []),
                 'final_decision' => $finalDecision,
                 'scenario_simulator' => $scenarioSimulator,
                 'interaction_log' => $result['interaction_log'] ?? [],
@@ -329,7 +331,9 @@ class AiGrowthDoctorGraphBuilder
         $negotiationUiSummary = $negotiation['ui_summary'] ?? [];
         $execution = $negotiation['execution'] ?? [];
         $calibration = $result['evaluations']['forecast_model_calibration'] ?? [];
-        $baseline = $negotiation['baseline_comparison']['agent_society'] ?? [];
+        $quantitativeBaseline = $result['quantitative_baseline_comparison']
+            ?? ($negotiation['quantitative_baseline_comparison'] ?? []);
+        $baseline = $quantitativeBaseline['agent_society'] ?? ($negotiation['baseline_comparison']['agent_society'] ?? []);
 
         return [
             'status' => $run['status'] ?? 'done',
@@ -349,6 +353,7 @@ class AiGrowthDoctorGraphBuilder
             'business_verdict' => $decision['business_verdict'] ?? null,
             'forecast_trust_score' => $calibration['trust_score']['updated_score'] ?? null,
             'unsafe_recommendation_prevented' => $baseline['unsafe_recommendation_prevented'] ?? null,
+            'baseline_headline' => $quantitativeBaseline['headline'] ?? null,
         ];
     }
 

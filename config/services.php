@@ -33,5 +33,9 @@ return [
         'api_key' => env('OPENAI_API_KEY'),
         'model' => env('OPENAI_MODEL', 'gpt-5.5-mini'),
     ],
-
+    'qwen' => [
+        'api_key' => env('QWEN_API_KEY'),
+        'base_url' => env('QWEN_BASE_URL', 'https://dashscope-intl.aliyuncs.com/compatible-mode/v1'),
+        'model' => env('QWEN_MODEL', 'qwen-plus'),
+    ],
 ];
