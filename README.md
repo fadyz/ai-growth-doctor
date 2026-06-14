@@ -2,7 +2,7 @@
 
 AI Growth Doctor is a multi-agent operating copilot for reading daily product growth signals and turning them into a concrete, evidence-backed operating decision.
 
-The system is designed as an **Agent Society**, not a single general-purpose AI answer. Deterministic services first extract the metrics and safe context. Specialist agents then analyze separate growth domains, challenge each other through a single-round structured negotiation, and pass the evidence package to a Final Decision Agent.
+The system is designed as an **Agent Society**, not a single general-purpose AI answer. Deterministic services first extract the metrics and safe context. Specialist agents then analyze separate growth domains with bounded system awareness, pass their outputs through adaptive structured negotiation, and send a reviewable evidence package to a Final Decision Agent.
 
 Before the Agent Society reads the data, app-specific source metrics are mapped into a **Generic Growth Metric Contract**. Hitung Kalori remains the real aggregated case study, but metrics such as `food_add_success` are normalized into reusable concepts such as `activation.core_action_success_users`.
 
@@ -40,7 +40,7 @@ Checkpoint JSON
    - Version Agent
    - Ads Agent
    - Tomorrow Forecast Agent
--> Single-Round Structured Negotiation
+-> Adaptive Structured Negotiation
 -> Orchestrator Evidence Assembly
 -> Final Decision Agent
 -> Decision Scenario Simulator
@@ -56,7 +56,9 @@ Checkpoint JSON
 - Forecast evaluation
 - Forecast calibration memory
 - Parallel specialist agent fan-out
-- Single-round structured negotiation
+- Bounded specialist output summaries
+- Adaptive structured negotiation with early exit
+- Hard conflict and bounded soft-tension tracking
 - Conflict matrix
 - Orchestrator evidence assembly
 - Final Decision Agent
@@ -71,9 +73,14 @@ Checkpoint JSON
 
 Core metrics such as activation rate, D1 retention, 7-day habit rate, paywall conversion, version performance, and campaign movement are calculated from actual data. Agents are not allowed to invent numbers.
 
-### Specialist Isolation
+### Specialist Isolation With Bounded Context
 
-Each specialist agent reads a focused domain. This prevents one perspective, such as ads or monetization, from dominating the diagnosis too early.
+Each specialist agent reads a focused domain plus bounded safe context from the metrics and guardrail layers. This prevents one perspective, such as ads or monetization, from dominating the diagnosis too early while still letting agents account for known cross-domain constraints.
+
+Specialist summaries expose both:
+
+- `domain_only_position`: what the agent would conclude from its narrow domain.
+- `bounded_system_position`: what the agent recommends after safe context, guardrails, forecast caution, and cross-domain constraints are applied.
 
 ### Guardrails Before Action
 
@@ -81,7 +88,19 @@ The Guardrail Policy Engine checks whether an action is safe before it can becom
 
 ### Structured Negotiation
 
-Specialist outputs are passed through a deterministic single-round structured negotiation. The system records material conflicts, evidence references, revised recommendations, and baseline comparison against a single-agent approach.
+Specialist outputs are passed through deterministic adaptive structured negotiation. The system supports up to three rounds, but exits early when no unresolved material or critical conflict remains.
+
+Negotiation records unresolved hard conflicts, bounded soft operating tensions, partial concessions, safety-bounded revisions, evidence references, and baseline comparison against a single-agent approach. Round 2 is not forced for appearance; if agents already received bounded safe context and only soft tensions remain, Round 2 and Round 3 are skipped intentionally.
+
+### Ads Lifecycle vs Metrics
+
+Ads Agent separates deterministic campaign lifecycle context from independent ads metric assessment:
+
+- `deterministic_lifecycle_context` wins campaign identity and interpretation, such as `degraded_legacy` vs `reset_successor`.
+- `ads_metric_independent_assessment` wins budget intensity, such as hold, monitor, cautious test, maintain, or scale carefully.
+- Downstream activation, retention, and guardrails win safety limits.
+
+A reset successor label can make a campaign valid to evaluate, but it does not prove the campaign is performing well. Budget posture must still come from CPI, conversion rate, conversion volume, spend movement, and sample quality.
 
 ### Final Synthesis, Not Voting
 
@@ -122,7 +141,7 @@ The graph shows:
 - App Data Mapping
 - Guardrail & Safe Context
 - 6 Specialist Agents
-- Single-Round Structured Negotiation
+- Adaptive Structured Negotiation
 - Orchestrator Evidence Assembly
 - Final Decision Agent
 - Decision Scenario Simulator
@@ -137,6 +156,8 @@ The graph toolbar supports:
 - Presentation mode
 - Export PNG
 - Copy graph JSON link
+
+Negotiation detail panels separate hard conflicts from bounded soft tensions, and expose partial concessions plus safety-bounded revisions so an early exit does not look like skipped debate.
 
 ## Local Development With Docker
 
@@ -168,6 +189,30 @@ The dashboard is available at:
 
 ```text
 http://localhost:8080/ai-growth-doctor
+```
+
+## Hosted Demo Protection
+
+The hosted judge demo can be protected with HTTP Basic Auth without adding Laravel users:
+
+```env
+DEMO_AUTH_ENABLED=true
+DEMO_AUTH_USER=judge
+DEMO_AUTH_PASSWORD=your-demo-password
+```
+
+After changing `.env` in production, refresh Laravel config:
+
+```bash
+php artisan config:clear
+php artisan config:cache
+```
+
+For Docker:
+
+```bash
+docker compose exec web php artisan config:clear
+docker compose exec web php artisan config:cache
 ```
 
 ## AI Provider Configuration

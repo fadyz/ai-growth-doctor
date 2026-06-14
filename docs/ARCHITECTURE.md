@@ -11,7 +11,7 @@ The platform now includes a Generic Growth Metric Contract layer. App-specific m
 - Convert daily growth data into an evidence-backed operating decision.
 - Separate deterministic facts from AI interpretation.
 - Let specialist agents analyze different domains independently.
-- Detect cross-domain conflicts before the final recommendation.
+- Detect unresolved hard conflicts and bounded soft tensions before the final recommendation.
 - Apply deterministic guardrails before aggressive actions can be recommended.
 - Keep humans as the final decision owners.
 - Make every run inspectable through JSON, dashboard cards, interaction logs, and the Agent Society graph.
@@ -26,7 +26,7 @@ Checkpoint Data
 -> Forecast Calibration Memory
 -> Guardrail / Safe Context
 -> Specialist Agents
--> Single-Round Structured Negotiation
+-> Adaptive Structured Negotiation
 -> Orchestrator Evidence Assembly
 -> Final Decision Agent
 -> Decision Scenario Simulator
@@ -41,7 +41,7 @@ Checkpoint Load
 -> App Data Mapping
 -> Guardrail & Safe Context
 -> Specialist Agents fan-out
--> Single-Round Structured Negotiation
+-> Adaptive Structured Negotiation
 -> Orchestrator Evidence Assembly
 -> Final Decision Agent
 -> Decision Scenario Simulator
@@ -272,14 +272,27 @@ Specialist agents analyze separate domains:
 - Retention Agent checks D0, D1, habit, and maturity.
 - Monetization Agent checks paywall and purchase quality.
 - Version Agent checks app version risk and release comparability.
-- Ads Agent checks acquisition and campaign lifecycle.
+- Ads Agent checks acquisition, deterministic campaign lifecycle context, and independent ads metric performance.
 - Tomorrow Forecast Agent checks forecast risk and trust weighting.
 
-Specialist outputs are evidence, not final decisions.
+Specialist outputs are evidence, not final decisions. Agents receive bounded safe context, so they are not blind silos. Specialist summaries expose:
+
+- `domain_only_position`
+- `bounded_system_position`
+- `constraint_acknowledgement`
+- `negotiation_need`
+- `residual_conflict`
+- `why_no_further_negotiation_needed`
+
+Ads Agent has an additional separation:
+
+- `deterministic_lifecycle_context`: campaign identity and interpretation, such as `degraded_legacy` or `reset_successor`.
+- `ads_metric_independent_assessment`: budget intensity based on CPI, conversion rate, conversion volume, spend movement, and sample quality.
+- `field_resolution_rule`: lifecycle wins identity, metrics win budget intensity, downstream guardrails win safety limits.
 
 ## Structured Negotiation
 
-`StructuredNegotiationService` creates a single-round cross-examination step between specialist outputs.
+`StructuredNegotiationService` creates an adaptive bounded cross-examination step between specialist outputs.
 
 It records:
 
@@ -287,7 +300,10 @@ It records:
 - specialist summaries
 - agent responses
 - negotiation timeline
-- conflicts
+- hard conflicts
+- bounded soft tensions
+- partial concessions
+- safety-bounded revisions
 - baseline comparison
 - decision package
 - summary counts
@@ -295,13 +311,25 @@ It records:
 Rules include:
 
 ```text
-max_rounds = 1
+max_rounds = 3
+early_exit_enabled = true
 raw_chain_of_thought_allowed = false
 evidence_required_for_objection = true
+evidence_bound_objections = true
+no_free_form_debate = true
 final_decision_owner = FinalDecisionAgent
 ```
 
-The purpose is not endless debate. The purpose is to expose material conflicts and revised recommendations before final synthesis.
+The purpose is not endless debate. The purpose is to expose unresolved material conflicts, bounded soft operating tensions, and safety-bounded revisions before final synthesis.
+
+Round 2 and Round 3 are skipped intentionally when Round 1 leaves no unresolved material or critical conflict. In that case, soft tensions remain visible as `bounded_tension` rows rather than fake material conflicts.
+
+Count semantics:
+
+- `total_conflict_count`: unresolved material or critical conflicts only.
+- `bounded_tension_count`: soft operating tensions bounded or resolved in Round 1.
+- `partial_concession_count`: turns where an agent rejects unsafe interpretation while preserving safe action.
+- `safety_bounded_revision_count`: partial concessions caused by safety constraints.
 
 ## Orchestrator Evidence Assembly
 
@@ -367,7 +395,7 @@ It builds:
 - nodes
 - edges
 - detail payloads
-- summary cards
+- summary cards for hard conflicts, bounded tensions, partial concessions, and final verdict
 
 It does not:
 
@@ -385,6 +413,7 @@ Each run can be inspected through:
 - interaction log
 - structured negotiation timeline
 - conflict matrix
+- bounded soft tension cards
 - graph visualizer
 - exported PNG
 
@@ -393,7 +422,8 @@ This makes it possible to answer:
 - Which agent produced which signal?
 - Which guardrail was triggered?
 - Which actions were blocked?
-- Which conflicts were detected?
+- Which hard conflicts and bounded soft tensions were detected?
+- Why did Round 2 or Round 3 skip by early-exit policy?
 - Why did the final verdict choose a conservative or aggressive action?
 
 ## Docker Architecture

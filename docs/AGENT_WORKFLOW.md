@@ -20,7 +20,7 @@ Checkpoint Data
    - Version Agent
    - Ads Agent
    - Tomorrow Forecast Agent
--> Single-Round Structured Negotiation
+-> Adaptive Structured Negotiation
 -> Orchestrator Evidence Assembly
 -> Final Decision Agent
 -> Decision Scenario Simulator
@@ -33,17 +33,28 @@ Checkpoint Data
 
 Primary metrics are computed deterministically from actual input data. Agents may interpret evidence, but they must not invent numbers.
 
-### 2. Specialist Agents Are Isolated
+### 2. Specialist Agents Are Isolated But Bounded
 
-Each specialist reads a focused domain. Ads, monetization, retention, activation, version, and forecast each get their own analysis before final synthesis.
+Each specialist reads a focused domain plus bounded safe context from the metrics, mapping, guardrail, forecast, and calibration layers. Ads, monetization, retention, activation, version, and forecast each get their own analysis before final synthesis, but they are not blind silos.
+
+Each specialist summary should expose:
+
+- `domain_only_position`
+- `bounded_system_position`
+- `constraint_acknowledgement`
+- `negotiation_need`
+- `residual_conflict`
+- `why_no_further_negotiation_needed`
 
 ### 3. Guardrail Before Action
 
 Recommendations are checked against deterministic policy. A specialist can suggest an action, but guardrails can block it.
 
-### 4. Structured Negotiation Before Final Decision
+### 4. Adaptive Structured Negotiation Before Final Decision
 
-Specialist outputs pass through a single-round structured negotiation. The system records conflicts, evidence references, and revised recommendations.
+Specialist outputs pass through adaptive structured negotiation. The system supports up to three structured rounds, but exits early when no unresolved material or critical conflict remains.
+
+The negotiation layer records hard conflicts separately from bounded soft operating tensions. A soft tension can be visible and valuable without forcing Round 2.
 
 ### 5. Final Synthesis Is Not Voting
 
@@ -411,6 +422,9 @@ Ads Agent checks acquisition quality and campaign lifecycle.
 - activation context
 - retention context
 - guardrail context
+- `deterministic_lifecycle_context`
+- `ads_metric_independent_assessment`
+- `field_resolution_rule`
 
 ### Questions Answered
 
@@ -429,6 +443,24 @@ Example:
   "ads_verdict": "evaluate_reset_successor",
   "campaign_health": "mixed",
   "confidence_score": 62,
+  "deterministic_lifecycle_context": {
+    "interpretation_winner": "lifecycle_context_wins_campaign_identity",
+    "legacy_campaign": {
+      "lifecycle_status": "degraded_legacy"
+    },
+    "reset_successor_campaign": {
+      "lifecycle_status": "reset_successor"
+    }
+  },
+  "ads_metric_independent_assessment": {
+    "budget_intensity_supported_by_metrics": "cautious_test",
+    "metric_winner_for_budget_intensity": "ads_metrics_win_budget_intensity"
+  },
+  "field_resolution_rule": {
+    "lifecycle_wins_for": "campaign identity and interpretation",
+    "metrics_win_for": "budget intensity",
+    "downstream_guardrails_win_for": "safety limits"
+  },
   "impact_on_final_decision": "Keep acquisition constrained to a small controlled test."
 }
 ```
@@ -436,6 +468,14 @@ Example:
 ### Boundary
 
 Ads Agent must not judge acquisition only from CPI or conversion rate. Downstream activation and retention quality must constrain its recommendation.
+
+Ads lifecycle and ads performance are intentionally separated:
+
+- `deterministic_lifecycle_context` decides campaign identity and interpretation. For example, `Volume Stabil` can be treated as degraded legacy and `Volume Install Reset` can be treated as reset successor.
+- `ads_metric_independent_assessment` decides budget intensity from actual ads metrics such as CPI, conversion rate, conversion volume, spend movement, and sample quality.
+- downstream activation, retention, and guardrails cap safety. Positive ads metrics can still be limited to a small controlled test.
+
+The reset successor label does not prove the reset campaign is working. It only makes that campaign the valid candidate to evaluate.
 
 ## 11. Tomorrow Forecast Agent
 
@@ -482,27 +522,34 @@ forecast_role = directional_signal_only
 trust_score is low
 ```
 
-## 12. Single-Round Structured Negotiation
+## 12. Adaptive Structured Negotiation
 
 ### Purpose
 
-Structured Negotiation creates a deterministic cross-examination step after specialist outputs.
+Structured Negotiation creates a deterministic bounded cross-examination step after specialist outputs.
 
 It is designed to answer:
 
 - Did any specialist recommendation conflict with another domain?
 - Did any recommendation violate deterministic guardrails?
 - Did any agent revise its recommendation after seeing cross-domain evidence?
+- Did any agent make a safety-bounded partial concession?
+- Are there bounded soft operating tensions that should be visible even though no hard conflict remains?
 - What would a single-agent baseline have missed?
 
 ### Rules
 
 ```text
-max_rounds = 1
+max_rounds = 3
+early_exit_enabled = true
 raw_chain_of_thought_allowed = false
 evidence_required_for_objection = true
+evidence_bound_objections = true
+no_free_form_debate = true
 final_decision_owner = FinalDecisionAgent
 ```
+
+Round 2 and Round 3 are not forced. If Round 1 leaves no unresolved material or critical conflict, negotiation exits early. This is intended behavior, not avoided debate.
 
 ### Output Sections
 
@@ -510,10 +557,33 @@ final_decision_owner = FinalDecisionAgent
 - specialist output summaries
 - agent responses
 - negotiation timeline
-- conflicts
+- conflict matrix
+- bounded tensions
+- revised recommendations
 - baseline comparison
 - decision package
 - summary
+
+### Turn-Level Schema
+
+Negotiation turns include the specialist bounded-awareness fields:
+
+```json
+{
+  "response_type": "soft_operating_constraint",
+  "severity": "minor",
+  "domain_only_position": "Session-to-core-action conversion is the main activation bottleneck.",
+  "bounded_system_position": "Activation should constrain acquisition scaling until the first-core-action path improves.",
+  "constraint_acknowledgement": [
+    "session_to_core_action_gap",
+    "ads_scaling_risk"
+  ],
+  "response_to_challenge": "warn",
+  "concession_type": "none",
+  "conflict_after_response": "bounded",
+  "residual_conflict_severity": "minor"
+}
+```
 
 ### Example Conflict
 
@@ -530,6 +600,34 @@ final_decision_owner = FinalDecisionAgent
   "resolution_candidate": "Keep budget stable, test higher-intent creative, and avoid aggressive scaling."
 }
 ```
+
+### Example Bounded Tension
+
+```json
+{
+  "conflict_id": "tension_ads_efficiency_vs_activation_retention_constraints",
+  "type": "bounded_tension",
+  "title": "Ads efficiency vs activation/retention constraints",
+  "severity": "minor",
+  "status": "resolved_in_round_1",
+  "resolution_mode": "safety_bounded_partial_concession",
+  "domain_only_tension": "Ads efficiency supports monitoring the reset successor campaign and possibly running a cautious controlled test.",
+  "bounded_system_resolution": "Reject aggressive scaling; preserve only cautious controlled testing with stable budget and downstream quality checks.",
+  "is_unresolved_material_conflict": false
+}
+```
+
+### Early Exit Semantics
+
+`total_conflict_count` means unresolved material or critical conflicts only. Bounded soft tensions are counted separately with fields such as:
+
+- `bounded_tension_count`
+- `resolved_bounded_tension_count`
+- `partial_concession_count`
+- `safety_bounded_revision_count`
+- `soft_operating_constraint_count`
+
+Round 1 can complete with `total_conflict_count = 0` and `bounded_tension_count > 0`.
 
 ## 13. Orchestrator Evidence Assembly
 
@@ -672,7 +770,7 @@ The Agent Society graph visualizer reads completed run JSON and renders the work
 - App Data Mapping
 - Guardrail & Safe Context
 - Specialist Agents
-- Single-Round Structured Negotiation
+- Adaptive Structured Negotiation
 - Orchestrator Evidence Assembly
 - Final Decision Agent
 - Decision Scenario Simulator
@@ -683,7 +781,7 @@ Clicking nodes shows structured details:
 
 - guardrail details
 - agent evidence and recommendations
-- negotiation rules, timeline, conflict matrix, and baseline comparison
+- negotiation rules, timeline, hard conflicts, bounded soft tensions, and baseline comparison
 - final decision and action plan
 - scenario simulator summary
 
@@ -740,9 +838,9 @@ Example daily run:
 7. Retention Agent finds weak D0-to-D1 habit continuity.
 8. Monetization Agent finds purchase signal but low sample.
 9. Version Agent marks newest version as promising but noisy.
-10. Ads Agent sees reset campaign potential but warns against scaling.
+10. Ads Agent separates reset-campaign lifecycle context from independent ads metric assessment, then recommends only bounded testing.
 11. Tomorrow Forecast Agent warns that retention and habit remain at risk.
-12. Structured Negotiation detects ads scaling vs retention conflict.
+12. Structured Negotiation records bounded ads-vs-retention tension and exits early if no unresolved material conflict remains.
 13. Orchestrator builds the conflict-aware decision package.
 14. Final Decision Agent chooses HOLD_AND_OPTIMIZE.
 15. Scenario Simulator compares baseline vs retention-first action plan.
@@ -773,7 +871,7 @@ Deterministic metrics
 -> App Data Mapping
 -> Guardrail / Safe Context
 -> Specialist Agent Society
--> Structured Negotiation
+-> Adaptive Structured Negotiation
 -> Evidence Assembly
 -> Final Decision
 -> Scenario Simulation
