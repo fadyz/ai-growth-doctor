@@ -57,5 +57,6 @@ function GraphApp({ root }) {
 const root = document.getElementById('agd-graph-root');
 
 if (root) {
+  root.dataset.graphMounted = 'true';
   createRoot(root).render(<GraphApp root={root} />);
 }
