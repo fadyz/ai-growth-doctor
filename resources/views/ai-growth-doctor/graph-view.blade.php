@@ -11,8 +11,10 @@
         $devServer = env('VITE_DEV_SERVER_URL', 'http://localhost:5173');
         $useDevServer = app()->environment('local') && !file_exists($manifestPath);
         $graphAsset = static function (string $file): string {
-            return route('ai-growth-doctor.graph-asset', ['file' => basename($file)]);
+            return route('ai-growth-doctor.graph-asset', ['file' => basename($file)], false);
         };
+        $dashboardUrl = '/ai-growth-doctor';
+        $graphJsonUrl = route('ai-growth-doctor.runs.graph', ['runId' => $runId], false);
     @endphp
     @if (!$useDevServer && $entry)
         @foreach (($entry['css'] ?? []) as $cssFile)
@@ -29,15 +31,15 @@
                 <span>Run {{ $runId }}</span>
             </div>
             <nav>
-                <a href="{{ url('/ai-growth-doctor') }}">Dashboard</a>
-                <a href="{{ route('ai-growth-doctor.runs.graph', ['runId' => $runId]) }}">Graph JSON</a>
+                <a href="{{ $dashboardUrl }}">Dashboard</a>
+                <a href="{{ $graphJsonUrl }}">Graph JSON</a>
             </nav>
         </header>
 
         <div
             id="agd-graph-root"
             data-run-id="{{ $runId }}"
-            data-graph-url="{{ route('ai-growth-doctor.runs.graph', ['runId' => $runId]) }}"
+            data-graph-url="{{ $graphJsonUrl }}"
         >
             <div class="agd-loading-fallback">Loading graph visualizer...</div>
         </div>
