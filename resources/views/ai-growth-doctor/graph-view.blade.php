@@ -10,13 +10,23 @@
         $entry = $manifest['resources/js/agd-graph/app.jsx'] ?? null;
         $devServer = env('VITE_DEV_SERVER_URL', 'http://localhost:5173');
         $useDevServer = app()->environment('local') && !file_exists($manifestPath);
-        $graphAsset = static function (string $file): string {
-            return route('ai-growth-doctor.graph-asset', ['file' => basename($file)]);
+        $graphAssetCandidates = static function (string $file): array {
+            $file = ltrim($file, '/');
+            $basename = basename($file);
+
+            return array_values(array_unique([
+                route('ai-growth-doctor.graph-asset', ['file' => $basename]),
+                asset('build/' . $file),
+                url('/build/' . $file),
+                url('/ai-growth-doctor/build/' . $file),
+            ]));
         };
     @endphp
     @if (!$useDevServer && $entry)
         @foreach (($entry['css'] ?? []) as $cssFile)
-            <link rel="stylesheet" href="{{ $graphAsset($cssFile) }}">
+            @foreach ($graphAssetCandidates($cssFile) as $cssHref)
+                <link rel="stylesheet" href="{{ $cssHref }}">
+            @endforeach
         @endforeach
     @endif
 </head>
@@ -48,20 +58,49 @@
         <script type="module" src="{{ $devServer }}/resources/js/agd-graph/app.jsx"></script>
     @elseif ($entry)
         <script>
-            window.setTimeout(function () {
+            (function () {
+                var graphScriptUrls = @json($graphAssetCandidates($entry['file']));
+                var attemptedGraphScriptUrls = [];
                 var root = document.getElementById('agd-graph-root');
-                if (!root || root.dataset.graphMounted === 'true') {
-                    return;
+
+                function showGraphAssetError() {
+                    root = root || document.getElementById('agd-graph-root');
+                    if (!root || root.dataset.graphMounted === 'true') {
+                        return;
+                    }
+
+                    root.innerHTML = '<div class="agd-loading-fallback">Graph asset failed to load. Tried: ' + attemptedGraphScriptUrls.join(', ') + '</div>';
                 }
 
-                root.innerHTML = '<div class="agd-loading-fallback">Graph asset failed to load. Check the graph JS/CSS build URL and run npm run build.</div>';
-            }, 4000);
+                function loadGraphScript(index) {
+                    if (index >= graphScriptUrls.length) {
+                        showGraphAssetError();
+                        return;
+                    }
+
+                    var script = document.createElement('script');
+                    script.type = 'module';
+                    script.src = graphScriptUrls[index];
+                    attemptedGraphScriptUrls.push(script.src);
+                    script.onload = function () {
+                        root = root || document.getElementById('agd-graph-root');
+                        if (root) {
+                            root.dataset.graphMounted = 'true';
+                        }
+                    };
+                    script.onerror = function () {
+                        loadGraphScript(index + 1);
+                    };
+                    document.body.appendChild(script);
+                }
+
+                loadGraphScript(0);
+
+                window.setTimeout(function () {
+                    showGraphAssetError();
+                }, 6000);
+            })();
         </script>
-        <script
-            type="module"
-            src="{{ $graphAsset($entry['file']) }}"
-            onload="document.getElementById('agd-graph-root').dataset.graphMounted = 'true'"
-        ></script>
     @else
         <script>
             document.getElementById('agd-graph-root').innerHTML = '<div class="agd-loading-fallback">Graph asset is not built yet. Run npm run build, or start npm run dev.</div>';
