@@ -8,11 +8,12 @@ Route::get('/', function () {
     return redirect('/ai-growth-doctor');
 });
 
+Route::get('/ai-growth-doctor/graph-assets/{file}', [AiGrowthDoctorGraphController::class, 'asset'])
+    ->where('file', '[A-Za-z0-9._-]+')
+    ->name('ai-growth-doctor.graph-asset');
+
 Route::middleware(['demo.basic_auth'])->group(function () {
     Route::get('/ai-growth-doctor', [AiGrowthDoctorController::class, 'dashboard']);
-    Route::get('/ai-growth-doctor/graph-assets/{file}', [AiGrowthDoctorGraphController::class, 'asset'])
-        ->where('file', '[A-Za-z0-9._-]+')
-        ->name('ai-growth-doctor.graph-asset');
     Route::get('/ai-growth-doctor/runs/{runId}/graph-view', [AiGrowthDoctorGraphController::class, 'show'])
         ->name('ai-growth-doctor.runs.graph-view');
     Route::get('/ai-growth-doctor/runs/{runId}/graph', [AiGrowthDoctorGraphController::class, 'graph'])
