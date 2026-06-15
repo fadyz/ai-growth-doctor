@@ -56,6 +56,24 @@ class AiGrowthDoctorGraphController extends Controller
         return response()->json($this->graphBuilder->build($this->graphRunPayloadFromAudit($audit)));
     }
 
+    public function asset(string $file)
+    {
+        if (!in_array($file, $this->allowedGraphAssetFiles(), true)) {
+            abort(404);
+        }
+
+        $path = public_path('build/assets/' . $file);
+
+        if (!file_exists($path)) {
+            abort(404);
+        }
+
+        return response()->file($path, [
+            'Content-Type' => $this->graphAssetMimeType($file),
+            'Cache-Control' => 'public, max-age=31536000, immutable',
+        ]);
+    }
+
     private function graphRunPayloadFromAudit(array $audit): array
     {
         $metricsContext = $audit['orchestrator_evidence_assembly']['metrics_context'] ?? [];
@@ -102,5 +120,46 @@ class AiGrowthDoctorGraphController extends Controller
     private function auditPath(string $runId): string
     {
         return storage_path('app/ai-growth-doctor/audit/' . $runId . '.json');
+    }
+
+    private function allowedGraphAssetFiles(): array
+    {
+        $manifestPath = public_path('build/manifest.json');
+
+        if (!file_exists($manifestPath)) {
+            return [];
+        }
+
+        $manifest = json_decode(file_get_contents($manifestPath), true);
+        $entry = is_array($manifest) ? ($manifest['resources/js/agd-graph/app.jsx'] ?? []) : [];
+
+        if (!is_array($entry)) {
+            return [];
+        }
+
+        $files = [];
+
+        if (isset($entry['file'])) {
+            $files[] = basename($entry['file']);
+        }
+
+        foreach (($entry['css'] ?? []) as $cssFile) {
+            $files[] = basename($cssFile);
+        }
+
+        return array_values(array_unique($files));
+    }
+
+    private function graphAssetMimeType(string $file): string
+    {
+        if (substr($file, -3) === '.js') {
+            return 'text/javascript; charset=UTF-8';
+        }
+
+        if (substr($file, -4) === '.css') {
+            return 'text/css; charset=UTF-8';
+        }
+
+        return 'application/octet-stream';
     }
 }

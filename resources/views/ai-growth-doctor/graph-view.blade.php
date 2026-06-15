@@ -10,12 +10,8 @@
         $entry = $manifest['resources/js/agd-graph/app.jsx'] ?? null;
         $devServer = env('VITE_DEV_SERVER_URL', 'http://localhost:5173');
         $useDevServer = app()->environment('local') && !file_exists($manifestPath);
-        $configuredAssetUrl = rtrim((string) config('app.asset_url'), '/');
-        $appPath = trim((string) parse_url((string) config('app.url'), PHP_URL_PATH), '/');
-        $requestBasePath = trim((string) request()->getBaseUrl(), '/');
-        $assetBasePath = $configuredAssetUrl ?: ($requestBasePath ? '/' . $requestBasePath : ($appPath ? '/' . $appPath : ''));
-        $graphAsset = static function (string $file) use ($assetBasePath): string {
-            return rtrim($assetBasePath, '/') . '/build/' . ltrim($file, '/');
+        $graphAsset = static function (string $file): string {
+            return route('ai-growth-doctor.graph-asset', ['file' => basename($file)]);
         };
     @endphp
     @if (!$useDevServer && $entry)

@@ -3,6 +3,10 @@ set -eu
 
 cd /var/www/html
 
+if [ "${APP_KEY:-}" = "" ]; then
+    unset APP_KEY
+fi
+
 if [ ! -f .env ]; then
     cp .env.docker.example .env
 fi
