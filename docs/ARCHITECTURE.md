@@ -128,7 +128,16 @@ Graph routes:
 ```text
 GET /ai-growth-doctor/runs/{runId}/graph
 GET /ai-growth-doctor/runs/{runId}/graph-view
+GET /ai-growth-doctor/runs/{runId}/audit
 ```
+
+Hosted demo access:
+
+```text
+https://agd.hitungkalori.com
+```
+
+The hosted demo can be protected by the `demo.basic_auth` middleware using `DEMO_AUTH_ENABLED`, `DEMO_AUTH_USER`, `DEMO_AUTH_PASSWORD`, and `DEMO_AUTH_REALM`. The middleware wraps the dashboard, run graph, audit download, and analysis API routes.
 
 ## Data Layer
 
@@ -151,7 +160,13 @@ Completed runs are stored as JSON:
 storage/app/ai-growth-doctor/runs/{runId}.json
 ```
 
-Run JSON is treated as immutable historical evidence. The graph visualizer only reads it.
+The default run payload is compact so the dashboard can load quickly. The full audit trace is persisted separately:
+
+```text
+storage/app/ai-growth-doctor/audit/{runId}.json
+```
+
+The graph visualizer reads the full audit trace, not the compact dashboard payload. Historical run and audit JSON files are treated as immutable evidence.
 
 ## Metrics Extraction
 
@@ -389,6 +404,8 @@ It is used for human review. It should not claim exact uplift without experiment
 
 `AiGrowthDoctorGraphBuilder` converts existing run JSON into React Flow nodes and edges.
 
+The graph controller loads `storage/app/ai-growth-doctor/audit/{runId}.json`, reconstructs the graph payload from the full audit trace, then passes that payload to the graph builder.
+
 It builds:
 
 - graph metadata
@@ -410,6 +427,7 @@ Each run can be inspected through:
 
 - dashboard cards
 - raw run JSON
+- full audit trace download
 - interaction log
 - structured negotiation timeline
 - conflict matrix

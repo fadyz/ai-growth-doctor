@@ -14,6 +14,16 @@ config/ai_growth_doctor.php
 
 The goal is not to automate business decisions blindly. The goal is to make the daily growth decision clearer, safer, and easier for a human operator to review.
 
+## Judge Quick Check
+
+Live demo:
+
+```text
+https://agd.hitungkalori.com
+```
+
+The hosted demo is protected with HTTP Basic Auth. Use the judge/demo credentials provided with the submission to access the live URL.
+
 ## What It Answers
 
 AI Growth Doctor helps answer questions such as:
@@ -193,12 +203,18 @@ http://localhost:8080/ai-growth-doctor
 
 ## Hosted Demo Protection
 
-The hosted judge demo can be protected with HTTP Basic Auth without adding Laravel users:
+The hosted judge demo is available at:
+
+```text
+https://agd.hitungkalori.com
+```
+
+It can be protected with HTTP Basic Auth without adding Laravel users:
 
 ```env
 DEMO_AUTH_ENABLED=true
 DEMO_AUTH_USER=judge
-DEMO_AUTH_PASSWORD=your-demo-password
+DEMO_AUTH_PASSWORD=AGD-qwen
 ```
 
 After changing `.env` in production, refresh Laravel config:

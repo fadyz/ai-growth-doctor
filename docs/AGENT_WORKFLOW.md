@@ -758,11 +758,19 @@ The interaction log makes the run auditable.
 - Which guardrail was active?
 - Why did the final decision choose a specific verdict?
 
+### Persistence
+
+The default run payload is compacted for dashboard use. The complete interaction log, full agent payloads, full metrics, structured negotiation output, and orchestrator evidence assembly are stored in the full audit trace:
+
+```text
+storage/app/ai-growth-doctor/audit/{runId}.json
+```
+
 ## 17. Graph Visualizer
 
 ### Purpose
 
-The Agent Society graph visualizer reads completed run JSON and renders the workflow as an interactive React Flow graph.
+The Agent Society graph visualizer reads the completed full audit trace and renders the workflow as an interactive React Flow graph.
 
 ### Shows
 
@@ -790,11 +798,18 @@ Clicking nodes shows structured details:
 ```text
 GET /ai-growth-doctor/runs/{runId}/graph
 GET /ai-growth-doctor/runs/{runId}/graph-view
+GET /ai-growth-doctor/runs/{runId}/audit
+```
+
+The dashboard, graph view, graph JSON, audit download, and analysis API routes can be protected by the `demo.basic_auth` middleware for the hosted judge demo:
+
+```text
+https://agd.hitungkalori.com
 ```
 
 ### Safety
 
-The graph visualizer does not modify historical run JSON. It does not display raw chain-of-thought.
+The graph visualizer does not modify historical run or audit JSON. It does not display raw chain-of-thought.
 
 ## 18. Data Readiness Mode
 
