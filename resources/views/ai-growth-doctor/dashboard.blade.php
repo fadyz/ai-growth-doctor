@@ -1399,33 +1399,33 @@
                                     </p>
                                 </div>
                                 <span class="shrink-0 inline-flex w-fit rounded-full px-3 py-1 text-[11px] font-semibold bg-white text-emerald-700 ring-1 ring-emerald-200">
-                                    {{ strtoupper(str_replace('_', ' ', $forecastEvaluationDecisionImpact['latest_forecast_quality'] ?? 'evaluation')) }}
+                                    {{ strtoupper(str_replace('_', ' ', $displayShortValue($forecastEvaluationDecisionImpact['latest_forecast_quality'] ?? 'evaluation'))) }}
                                 </span>
                             </div>
                             <div class="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
                                 <div class="bg-white/80 border border-emerald-200 rounded-xl p-3 text-emerald-950">
                                     <div class="text-xs font-semibold text-emerald-700 mb-1">Actual Data Until</div>
-                                    {{ $forecastEvaluationDecisionImpact['actual_data_available_until'] ?? '-' }}
+                                    {{ $displayValue($forecastEvaluationDecisionImpact['actual_data_available_until'] ?? '-') }}
                                 </div>
                                 <div class="bg-white/80 border border-emerald-200 rounded-xl p-3 text-emerald-950">
                                     <div class="text-xs font-semibold text-emerald-700 mb-1">Latest Hit Rate</div>
-                                    {{ $forecastEvaluationDecisionImpact['latest_hit_rate'] ?? '-' }}{{ isset($forecastEvaluationDecisionImpact['latest_hit_rate']) ? '%' : '' }}
+                                    {{ $displayShortValue($forecastEvaluationDecisionImpact['latest_hit_rate'] ?? '-') }}{{ isset($forecastEvaluationDecisionImpact['latest_hit_rate']) ? '%' : '' }}
                                 </div>
                                 <div class="bg-white/80 border border-emerald-200 rounded-xl p-3 text-emerald-950">
                                     <div class="text-xs font-semibold text-emerald-700 mb-1">Latest Forecast Date</div>
-                                    {{ $forecastEvaluationDecisionImpact['latest_forecast_for_date'] ?? '-' }}
+                                    {{ $displayValue($forecastEvaluationDecisionImpact['latest_forecast_for_date'] ?? '-') }}
                                 </div>
                                 <div class="bg-white/80 border border-amber-200 rounded-xl p-3 text-amber-950">
                                     <div class="text-xs font-semibold text-amber-700 mb-1">Pending Maturity</div>
-                                    {{ $forecastEvaluationDecisionImpact['metrics_pending_maturity'] ?? ($forecastEvaluationSummary['metrics_pending_maturity'] ?? 0) }}
+                                    {{ $displayValue($forecastEvaluationDecisionImpact['metrics_pending_maturity'] ?? ($forecastEvaluationSummary['metrics_pending_maturity'] ?? 0)) }}
                                 </div>
                                 <div class="bg-white/80 border border-emerald-200 rounded-xl p-3 text-emerald-950">
                                     <div class="text-xs font-semibold text-emerald-700 mb-1">Evaluation Available</div>
-                                    {{ $forecastEvaluationDecisionImpact['evaluation_available'] ?? '-' }}
+                                    {{ $displayValue($forecastEvaluationDecisionImpact['evaluation_available'] ?? '-') }}
                                 </div>
                                 <div class="md:col-span-2 bg-white/80 border border-emerald-200 rounded-xl p-3 text-emerald-950">
                                     <div class="text-xs font-semibold text-emerald-700 mb-1">Impact on Today Decision</div>
-                                    {{ $forecastEvaluationDecisionImpact['impact_on_today_decision'] ?? '-' }}
+                                    {{ $displayValue($forecastEvaluationDecisionImpact['impact_on_today_decision'] ?? '-') }}
                                 </div>
                             </div>
 
@@ -1434,7 +1434,7 @@
                                     <div class="text-xs font-semibold text-emerald-700 mb-2">Main Misses</div>
                                     <ul class="list-disc ml-5 space-y-1 text-sm text-emerald-950">
                                         @foreach (($forecastEvaluationDecisionImpact['main_misses'] ?? []) as $miss)
-                                            <li>{{ is_array($miss) ? json_encode($miss, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) : $miss }}</li>
+                                            <li class="whitespace-pre-wrap">{{ $displayValue($miss) }}</li>
                                         @endforeach
                                     </ul>
                                 </div>
@@ -1454,29 +1454,29 @@
                                     </p>
                                 </div>
                                 <span class="shrink-0 inline-flex w-fit rounded-full px-3 py-1 text-[11px] font-semibold bg-white text-violet-700 ring-1 ring-violet-200">
-                                    {{ strtoupper(str_replace('_', ' ', $forecastCalibrationDecisionImpact['forecast_role'] ?? 'calibration')) }}
+                                    {{ strtoupper(str_replace('_', ' ', $displayShortValue($forecastCalibrationDecisionImpact['forecast_role'] ?? 'calibration'))) }}
                                 </span>
                             </div>
                             <div class="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
                                 <div class="bg-white/80 border border-violet-200 rounded-xl p-3 text-violet-950">
                                     <div class="text-xs font-semibold text-violet-700 mb-1">Trust Score</div>
-                                    {{ $forecastCalibrationDecisionImpact['trust_score'] ?? '-' }}{{ isset($forecastCalibrationDecisionImpact['trust_score']) ? '/100' : '' }}
+                                    {{ $displayShortValue($forecastCalibrationDecisionImpact['trust_score'] ?? '-') }}{{ isset($forecastCalibrationDecisionImpact['trust_score']) ? '/100' : '' }}
                                 </div>
                                 <div class="bg-white/80 border border-violet-200 rounded-xl p-3 text-violet-950">
                                     <div class="text-xs font-semibold text-violet-700 mb-1">Mature Hit Rate</div>
-                                    {{ $forecastCalibrationDecisionImpact['overall_mature_hit_rate'] ?? '-' }}{{ isset($forecastCalibrationDecisionImpact['overall_mature_hit_rate']) ? '%' : '' }}
+                                    {{ $displayShortValue($forecastCalibrationDecisionImpact['overall_mature_hit_rate'] ?? '-') }}{{ isset($forecastCalibrationDecisionImpact['overall_mature_hit_rate']) ? '%' : '' }}
                                 </div>
                                 <div class="bg-white/80 border border-violet-200 rounded-xl p-3 text-violet-950">
                                     <div class="text-xs font-semibold text-violet-700 mb-1">Guardrail Adjustment</div>
-                                    {{ strtoupper(str_replace('_', ' ', $forecastCalibrationDecisionImpact['guardrail_adjustment'] ?? '-')) }}
+                                    {{ strtoupper(str_replace('_', ' ', $displayShortValue($forecastCalibrationDecisionImpact['guardrail_adjustment'] ?? '-'))) }}
                                 </div>
                                 <div class="bg-white/80 border border-violet-200 rounded-xl p-3 text-violet-950">
                                     <div class="text-xs font-semibold text-violet-700 mb-1">Evaluations Used</div>
-                                    {{ $forecastCalibrationDecisionImpact['evaluations_used'] ?? '-' }}
+                                    {{ $displayValue($forecastCalibrationDecisionImpact['evaluations_used'] ?? '-') }}
                                 </div>
                                 <div class="md:col-span-2 bg-white/80 border border-violet-200 rounded-xl p-3 text-violet-950">
                                     <div class="text-xs font-semibold text-violet-700 mb-1">Impact on Today Decision</div>
-                                    {{ $forecastCalibrationDecisionImpact['impact_on_today_decision'] ?? '-' }}
+                                    {{ $displayValue($forecastCalibrationDecisionImpact['impact_on_today_decision'] ?? '-') }}
                                 </div>
                             </div>
                         </div>
@@ -1493,18 +1493,18 @@
                                     </p>
                                 </div>
                                 <span class="shrink-0 inline-flex w-fit rounded-full px-3 py-1 text-[11px] font-semibold bg-white text-rose-700 ring-1 ring-rose-200">
-                                    {{ strtoupper(str_replace('_', ' ', $decisionRiskAssessment['if_wrong']['risk_type'] ?? 'risk')) }}
+                                    {{ strtoupper(str_replace('_', ' ', $displayShortValue($decisionRiskAssessment['if_wrong']['risk_type'] ?? 'risk'))) }}
                                 </span>
                             </div>
 
                             <div class="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
                                 <div class="bg-white/80 border border-rose-200 rounded-xl p-3 text-rose-950">
                                     <div class="text-xs font-semibold text-rose-700 mb-1">Decision</div>
-                                    {{ strtoupper(str_replace('_', ' ', $decisionRiskAssessment['decision'] ?? '-')) }}
+                                    {{ strtoupper(str_replace('_', ' ', $displayShortValue($decisionRiskAssessment['decision'] ?? '-'))) }}
                                 </div>
                                 <div class="bg-white/80 border border-rose-200 rounded-xl p-3 text-rose-950">
                                     <div class="text-xs font-semibold text-rose-700 mb-1">Confidence</div>
-                                    {{ $decisionRiskAssessment['confidence_score'] ?? '-' }}{{ isset($decisionRiskAssessment['confidence_score']) ? '/100' : '' }}
+                                    {{ $displayShortValue($decisionRiskAssessment['confidence_score'] ?? '-') }}{{ isset($decisionRiskAssessment['confidence_score']) ? '/100' : '' }}
                                 </div>
                                 <div class="md:col-span-2 bg-white/80 border border-rose-200 rounded-xl p-3 text-rose-950">
                                     <div class="text-xs font-semibold text-rose-700 mb-1">Primary Reason</div>
@@ -1512,11 +1512,11 @@
                                 </div>
                                 <div class="bg-white/80 border border-rose-200 rounded-xl p-3 text-rose-950">
                                     <div class="text-xs font-semibold text-rose-700 mb-1">Estimated 7D Impact if Wrong</div>
-                                    {{ $decisionRiskAssessment['if_wrong']['estimated_7d_impact'] ?? '-' }}
+                                    {{ $displayValue($decisionRiskAssessment['if_wrong']['estimated_7d_impact'] ?? '-') }}
                                 </div>
                                 <div class="bg-white/80 border border-blue-200 rounded-xl p-3 text-blue-950">
                                     <div class="text-xs font-semibold text-blue-700 mb-1">Reverse Condition</div>
-                                    {{ $decisionRiskAssessment['reverse_condition']['condition'] ?? '-' }}
+                                    {{ $displayValue($decisionRiskAssessment['reverse_condition']['condition'] ?? '-') }}
                                 </div>
                             </div>
                         </div>
@@ -1539,7 +1539,7 @@
                                         <div class="text-xs font-semibold uppercase tracking-[0.16em] text-cyan-700">Decision Scenario Simulation</div>
                                         <div class="text-sm text-cyan-900 mt-1">Compares the baseline without major intervention against the scenario if the final recommendation is executed.</div>
                                         <div class="text-xs text-cyan-700 mt-2">
-                                            Preview: {{ strtoupper(str_replace('_', ' ', $scenarioRecommendedAction['action'] ?? ($decisionScenarioResult['simulation_type'] ?? 'baseline_vs_recommended_action'))) }} · confidence {{ strtoupper(str_replace('_', ' ', $scenarioIntervention['confidence'] ?? '-')) }}
+                                            Preview: {{ strtoupper(str_replace('_', ' ', $displayShortValue($scenarioRecommendedAction['action'] ?? ($decisionScenarioResult['simulation_type'] ?? 'baseline_vs_recommended_action')))) }} · confidence {{ strtoupper(str_replace('_', ' ', $displayShortValue($scenarioIntervention['confidence'] ?? '-'))) }}
                                         </div>
                                     </div>
                                     <div class="shrink-0 text-xs font-semibold text-cyan-700" x-text="showScenario ? 'Hide' : 'Show'"></div>
@@ -1558,20 +1558,20 @@
                                         </p>
                                     </div>
                                     <span class="shrink-0 inline-flex w-fit rounded-full px-3 py-1 text-[11px] font-semibold bg-white text-cyan-700 ring-1 ring-cyan-200">
-                                        {{ strtoupper(str_replace('_', ' ', $scenarioIntervention['confidence'] ?? ($decisionScenarioResult['simulation_scope'] ?? 'scenario'))) }}
+                                        {{ strtoupper(str_replace('_', ' ', $displayShortValue($scenarioIntervention['confidence'] ?? ($decisionScenarioResult['simulation_scope'] ?? 'scenario')))) }}
                                     </span>
                                 </div>
 
                                 <div class="grid grid-cols-1 lg:grid-cols-2 gap-3 text-sm mb-3">
                                     <div class="bg-white/80 border border-cyan-200 rounded-xl p-4 text-cyan-950">
                                         <div class="text-xs font-semibold text-cyan-700 mb-1">Baseline Without Intervention</div>
-                                        <div class="font-semibold mb-2">Forecast For: {{ $scenarioBaseline['forecast_for_date'] ?? '-' }}</div>
+                                        <div class="font-semibold mb-2">Forecast For: {{ $displayShortValue($scenarioBaseline['forecast_for_date'] ?? '-') }}</div>
                                         <div>{{ $displayValue($scenarioBaseline['summary'] ?? '-') }}</div>
                                     </div>
 
                                     <div class="bg-white/80 border border-cyan-200 rounded-xl p-4 text-cyan-950">
                                         <div class="text-xs font-semibold text-cyan-700 mb-1">Recommended Intervention</div>
-                                        <div class="font-semibold mb-2">{{ strtoupper(str_replace('_', ' ', $scenarioRecommendedAction['action'] ?? '-')) }}</div>
+                                        <div class="font-semibold mb-2">{{ strtoupper(str_replace('_', ' ', $displayShortValue($scenarioRecommendedAction['action'] ?? '-'))) }}</div>
                                         <div>{{ $displayValue($scenarioRecommendedAction['why_this_action'] ?? '-') }}</div>
                                     </div>
                                 </div>
@@ -1632,7 +1632,7 @@
                                             : 'The guardrail that ultimately wins, the blocked decision, and the operating decision that remains allowed.' }}
                                     </div>
                                     <div class="text-xs {{ $isNormalOperatingResolution ? 'text-emerald-700' : 'text-amber-700' }} mt-2">
-                                        Preview: {{ strtoupper($conflictPreviewLabel) }} · blocked {{ strtoupper(str_replace('_', ' ', $conflictRule['blocked_decision'] ?? ($guardrailDeterministicDecision['blocked_decision'] ?? '-'))) }} · allowed {{ strtoupper(str_replace('_', ' ', $conflictRule['allowed_decision'] ?? ($guardrailDeterministicDecision['allowed_decision'] ?? '-'))) }}
+                                        Preview: {{ strtoupper($conflictPreviewLabel) }} · blocked {{ strtoupper(str_replace('_', ' ', $displayShortValue($conflictRule['blocked_decision'] ?? ($guardrailDeterministicDecision['blocked_decision'] ?? '-')))) }} · allowed {{ strtoupper(str_replace('_', ' ', $displayShortValue($conflictRule['allowed_decision'] ?? ($guardrailDeterministicDecision['allowed_decision'] ?? '-')))) }}
                                     </div>
                                 </div>
                                 <div class="shrink-0 text-xs font-semibold {{ $isNormalOperatingResolution ? 'text-emerald-700' : 'text-amber-700' }}" x-text="showResolution ? 'Hide' : 'Show'"></div>
@@ -1656,19 +1656,19 @@
                             <div class="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
                                 <div class="bg-white/80 border {{ $isNormalOperatingResolution ? 'border-emerald-200 text-emerald-950' : 'border-amber-200 text-amber-950' }} rounded-xl p-3">
                                     <div class="text-xs font-semibold {{ $isNormalOperatingResolution ? 'text-emerald-700' : 'text-amber-700' }} mb-1">Rule Triggered</div>
-                                    {{ $isNormalOperatingResolution ? ($conflictRule['rule_triggered'] ?? 'No deterministic guardrail was triggered.') : ($conflictRule['rule_triggered'] ?? '-') }}
+                                    {{ $displayValue($isNormalOperatingResolution ? ($conflictRule['rule_triggered'] ?? 'No deterministic guardrail was triggered.') : ($conflictRule['rule_triggered'] ?? '-')) }}
                                 </div>
                                 <div class="bg-white/80 border {{ $isNormalOperatingResolution ? 'border-emerald-200 text-emerald-950' : 'border-amber-200 text-amber-950' }} rounded-xl p-3">
                                     <div class="text-xs font-semibold {{ $isNormalOperatingResolution ? 'text-emerald-700' : 'text-amber-700' }} mb-1">Why It Wins</div>
-                                    {{ $isNormalOperatingResolution ? ($conflictRule['why_veto_won'] ?? 'No deterministic guardrail won because no deterministic guardrail was triggered.') : ($conflictRule['why_veto_won'] ?? '-') }}
+                                    {{ $displayValue($isNormalOperatingResolution ? ($conflictRule['why_veto_won'] ?? 'No deterministic guardrail won because no deterministic guardrail was triggered.') : ($conflictRule['why_veto_won'] ?? '-')) }}
                                 </div>
                                 <div class="bg-white/80 border {{ $isNormalOperatingResolution ? 'border-emerald-200 text-emerald-950' : 'border-amber-200 text-amber-950' }} rounded-xl p-3">
                                     <div class="text-xs font-semibold text-rose-700 mb-1">Blocked Decision</div>
-                                    {{ $conflictRule['blocked_decision'] ?? '-' }}
+                                    {{ $displayValue($conflictRule['blocked_decision'] ?? '-') }}
                                 </div>
                                 <div class="bg-white/80 border {{ $isNormalOperatingResolution ? 'border-emerald-200 text-emerald-950' : 'border-amber-200 text-amber-950' }} rounded-xl p-3">
                                     <div class="text-xs font-semibold text-emerald-700 mb-1">Allowed Decision</div>
-                                    {{ $conflictRule['allowed_decision'] ?? '-' }}
+                                    {{ $displayValue($conflictRule['allowed_decision'] ?? '-') }}
                                 </div>
                             </div>
 
@@ -1823,7 +1823,7 @@
                     <div class="flex items-start justify-between gap-3 mb-3 min-w-0">
                         <div class="min-w-0 flex-1 pr-2">
                             <div class="text-sm text-slate-500 mb-1 truncate">AI Activation</div>
-                            <div class="text-xl font-bold leading-tight truncate" title="{{ strtoupper($aiActivationResult['status'] ?? ($aiActivationAgent['status'] ?? 'unknown')) }}">{{ strtoupper($aiActivationResult['status'] ?? ($aiActivationAgent['status'] ?? 'unknown')) }}</div>
+                            <div class="text-xl font-bold leading-tight truncate" title="{{ strtoupper($displayShortValue($aiActivationResult['status'] ?? ($aiActivationAgent['status'] ?? 'unknown'))) }}">{{ strtoupper($displayShortValue($aiActivationResult['status'] ?? ($aiActivationAgent['status'] ?? 'unknown'))) }}</div>
                         </div>
                         <div class="shrink-0 whitespace-nowrap text-xs px-3 py-1 rounded-full {{ ($aiActivationAgent['status'] ?? '') === 'active' ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-600' }}">
                             {{ strtoupper($aiActivationAgent['status'] ?? 'unknown') }}
@@ -1831,9 +1831,9 @@
                     </div>
                     <div class="mt-auto pt-2">
                         @if (isset($aiActivationResult['confidence_score']))
-                            <div class="text-xs text-slate-500 mb-2">Confidence {{ $aiActivationResult['confidence_score'] }}/100</div>
+                            <div class="text-xs text-slate-500 mb-2">Confidence {{ $displayShortValue($aiActivationResult['confidence_score']) }}/100</div>
                         @endif
-                        <p class="text-slate-600 text-sm line-clamp-2">{{ $aiActivationResult['diagnosis'] ?? ($aiActivationAgent['diagnosis'] ?? '-') }}</p>
+                        <p class="text-slate-600 text-sm line-clamp-2">{{ $displayShortValue($aiActivationResult['diagnosis'] ?? ($aiActivationAgent['diagnosis'] ?? '-')) }}</p>
                     </div>
                 </button>
 
@@ -1841,7 +1841,7 @@
                     <div class="flex items-start justify-between gap-3 mb-3 min-w-0">
                         <div class="min-w-0 flex-1 pr-2">
                             <div class="text-sm text-slate-500 mb-1 truncate">AI Retention</div>
-                            <div class="text-xl font-bold leading-tight truncate" title="{{ strtoupper($aiRetentionResult['status'] ?? ($aiRetentionAgent['status'] ?? 'unknown')) }}">{{ strtoupper($aiRetentionResult['status'] ?? ($aiRetentionAgent['status'] ?? 'unknown')) }}</div>
+                            <div class="text-xl font-bold leading-tight truncate" title="{{ strtoupper($displayShortValue($aiRetentionResult['status'] ?? ($aiRetentionAgent['status'] ?? 'unknown'))) }}">{{ strtoupper($displayShortValue($aiRetentionResult['status'] ?? ($aiRetentionAgent['status'] ?? 'unknown'))) }}</div>
                         </div>
                         <div class="shrink-0 whitespace-nowrap text-xs px-3 py-1 rounded-full {{ ($aiRetentionAgent['status'] ?? '') === 'active' ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-600' }}">
                             {{ strtoupper($aiRetentionAgent['status'] ?? 'unknown') }}
@@ -1849,9 +1849,9 @@
                     </div>
                     <div class="mt-auto pt-2">
                         @if (isset($aiRetentionResult['confidence_score']))
-                            <div class="text-xs text-slate-500 mb-2">Confidence {{ $aiRetentionResult['confidence_score'] }}/100</div>
+                            <div class="text-xs text-slate-500 mb-2">Confidence {{ $displayShortValue($aiRetentionResult['confidence_score']) }}/100</div>
                         @endif
-                        <p class="text-slate-600 text-sm line-clamp-2">{{ $aiRetentionResult['diagnosis'] ?? ($aiRetentionAgent['diagnosis'] ?? '-') }}</p>
+                        <p class="text-slate-600 text-sm line-clamp-2">{{ $displayShortValue($aiRetentionResult['diagnosis'] ?? ($aiRetentionAgent['diagnosis'] ?? '-')) }}</p>
                     </div>
                 </button>
 
@@ -1859,7 +1859,7 @@
                     <div class="flex items-start justify-between gap-3 mb-3 min-w-0">
                         <div class="min-w-0 flex-1 pr-2">
                             <div class="text-sm text-slate-500 mb-1 truncate">AI Monetization</div>
-                            <div class="text-xl font-bold leading-tight truncate" title="{{ strtoupper($aiMonetizationResult['status'] ?? ($aiMonetizationAgent['status'] ?? 'unknown')) }}">{{ strtoupper($aiMonetizationResult['status'] ?? ($aiMonetizationAgent['status'] ?? 'unknown')) }}</div>
+                            <div class="text-xl font-bold leading-tight truncate" title="{{ strtoupper($displayShortValue($aiMonetizationResult['status'] ?? ($aiMonetizationAgent['status'] ?? 'unknown'))) }}">{{ strtoupper($displayShortValue($aiMonetizationResult['status'] ?? ($aiMonetizationAgent['status'] ?? 'unknown'))) }}</div>
                         </div>
                         <div class="shrink-0 whitespace-nowrap text-xs px-3 py-1 rounded-full {{ ($aiMonetizationAgent['status'] ?? '') === 'active' ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-600' }}">
                             {{ strtoupper($aiMonetizationAgent['status'] ?? 'unknown') }}
@@ -1867,9 +1867,9 @@
                     </div>
                     <div class="mt-auto pt-2">
                         @if (isset($aiMonetizationResult['confidence_score']))
-                            <div class="text-xs text-slate-500 mb-2">Confidence {{ $aiMonetizationResult['confidence_score'] }}/100</div>
+                            <div class="text-xs text-slate-500 mb-2">Confidence {{ $displayShortValue($aiMonetizationResult['confidence_score']) }}/100</div>
                         @endif
-                        <p class="text-slate-600 text-sm line-clamp-2">{{ $aiMonetizationResult['diagnosis'] ?? ($aiMonetizationAgent['diagnosis'] ?? '-') }}</p>
+                        <p class="text-slate-600 text-sm line-clamp-2">{{ $displayShortValue($aiMonetizationResult['diagnosis'] ?? ($aiMonetizationAgent['diagnosis'] ?? '-')) }}</p>
                     </div>
                 </button>
 
@@ -1877,7 +1877,7 @@
                     <div class="flex items-start justify-between gap-3 mb-3 min-w-0">
                         <div class="min-w-0 flex-1 pr-2">
                             <div class="text-sm text-slate-500 mb-1 truncate">AI Version</div>
-                            <div class="text-xl font-bold leading-tight truncate" title="{{ strtoupper($aiVersionResult['status'] ?? ($aiVersionAgent['status'] ?? 'unknown')) }}">{{ strtoupper($aiVersionResult['status'] ?? ($aiVersionAgent['status'] ?? 'unknown')) }}</div>
+                            <div class="text-xl font-bold leading-tight truncate" title="{{ strtoupper($displayShortValue($aiVersionResult['status'] ?? ($aiVersionAgent['status'] ?? 'unknown'))) }}">{{ strtoupper($displayShortValue($aiVersionResult['status'] ?? ($aiVersionAgent['status'] ?? 'unknown'))) }}</div>
                         </div>
                         <div class="shrink-0 whitespace-nowrap text-xs px-3 py-1 rounded-full {{ ($aiVersionAgent['status'] ?? '') === 'active' ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-600' }}">
                             {{ strtoupper($aiVersionAgent['status'] ?? 'unknown') }}
@@ -1885,9 +1885,9 @@
                     </div>
                     <div class="mt-auto pt-2">
                         @if (isset($aiVersionResult['confidence_score']))
-                            <div class="text-xs text-slate-500 mb-2">Confidence {{ $aiVersionResult['confidence_score'] }}/100</div>
+                            <div class="text-xs text-slate-500 mb-2">Confidence {{ $displayShortValue($aiVersionResult['confidence_score']) }}/100</div>
                         @endif
-                        <p class="text-slate-600 text-sm line-clamp-2">{{ $aiVersionResult['diagnosis'] ?? ($aiVersionAgent['diagnosis'] ?? '-') }}</p>
+                        <p class="text-slate-600 text-sm line-clamp-2">{{ $displayShortValue($aiVersionResult['diagnosis'] ?? ($aiVersionAgent['diagnosis'] ?? '-')) }}</p>
                     </div>
                 </button>
 
@@ -1895,7 +1895,7 @@
                     <div class="flex items-start justify-between gap-3 mb-3 min-w-0">
                         <div class="min-w-0 flex-1 pr-2">
                             <div class="text-sm text-slate-500 mb-1 truncate">AI Ads</div>
-                            <div class="text-xl font-bold leading-tight truncate" title="{{ strtoupper($aiAdsResult['ads_verdict'] ?? ($aiAdsAgent['status'] ?? 'unknown')) }}">{{ strtoupper(str_replace('_', ' ', $aiAdsResult['ads_verdict'] ?? ($aiAdsAgent['status'] ?? 'unknown'))) }}</div>
+                            <div class="text-xl font-bold leading-tight truncate" title="{{ strtoupper($displayShortValue($aiAdsResult['ads_verdict'] ?? ($aiAdsAgent['status'] ?? 'unknown'))) }}">{{ strtoupper(str_replace('_', ' ', $displayShortValue($aiAdsResult['ads_verdict'] ?? ($aiAdsAgent['status'] ?? 'unknown')))) }}</div>
                         </div>
                         <div class="shrink-0 whitespace-nowrap text-xs px-3 py-1 rounded-full {{ ($aiAdsAgent['status'] ?? '') === 'active' ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-600' }}">
                             {{ strtoupper($aiAdsAgent['status'] ?? 'unknown') }}
@@ -1903,7 +1903,7 @@
                     </div>
                     <div class="mt-auto pt-2">
                         @if (isset($aiAdsResult['confidence_score']))
-                            <div class="text-xs text-slate-500 mb-2">Confidence {{ $aiAdsResult['confidence_score'] }}/100</div>
+                            <div class="text-xs text-slate-500 mb-2">Confidence {{ $displayShortValue($aiAdsResult['confidence_score']) }}/100</div>
                         @endif
                         <p class="text-slate-600 text-sm line-clamp-2">
                             {{ $displayValue($aiAdsResult['main_diagnosis'] ?? ($adsMetrics['ads_verdict']['reason'] ?? 'Ads acquisition evidence is not available yet.')) }}
@@ -1929,10 +1929,10 @@
                     </div>
                     <div class="mt-auto pt-2">
                         @if (isset($aiTomorrowForecastResult['confidence_score']))
-                            <div class="text-xs text-slate-500 mb-2">Confidence {{ $aiTomorrowForecastResult['confidence_score'] }}/100</div>
+                            <div class="text-xs text-slate-500 mb-2">Confidence {{ $displayShortValue($aiTomorrowForecastResult['confidence_score']) }}/100</div>
                         @endif
                         <p class="text-slate-600 text-sm line-clamp-2">
-                            {{ $aiTomorrowForecastResult['executive_summary'] ?? ($aiTomorrowForecastResult['main_predicted_risk'] ?? 'Tomorrow quantitative forecast is not available yet.') }}
+                            {{ $displayShortValue($aiTomorrowForecastResult['executive_summary'] ?? ($aiTomorrowForecastResult['main_predicted_risk'] ?? 'Tomorrow quantitative forecast is not available yet.')) }}
                         </p>
                     </div>
                 </button>
@@ -1967,7 +1967,7 @@
                     </div>
                     <div class="bg-slate-50 border border-slate-200 rounded-xl p-4">
                         <div class="text-xs text-slate-500 mb-1">Prediction Status</div>
-                        <div class="text-lg font-bold">{{ strtoupper($aiTomorrowForecastResult['prediction_status'] ?? '-') }}</div>
+                        <div class="text-lg font-bold">{{ strtoupper($displayShortValue($aiTomorrowForecastResult['prediction_status'] ?? '-')) }}</div>
                     </div>
                     <div class="bg-slate-50 border border-slate-200 rounded-xl p-4">
                         <div class="text-xs text-slate-500 mb-1">Scaling Caution</div>
@@ -2103,9 +2103,9 @@
                 class="mt-5 bg-white rounded-2xl p-5 shadow-sm border border-slate-200 min-w-0"
             >
                 <h3 class="text-lg font-bold mb-2">AI Activation Agent Detail</h3>
-                <p class="text-slate-700 mb-3">{{ $aiActivationResult['diagnosis'] ?? '-' }}</p>
+                <p class="text-slate-700 mb-3 whitespace-pre-wrap">{{ $displayValue($aiActivationResult['diagnosis'] ?? '-') }}</p>
                 @if (!empty($aiActivationResult['main_leak']))
-                    <div class="text-sm text-slate-500 mb-3">Main leak: <strong class="text-slate-800">{{ $aiActivationResult['main_leak'] }}</strong></div>
+                    <div class="text-sm text-slate-500 mb-3">Main leak: <strong class="text-slate-800">{{ $displayValue($aiActivationResult['main_leak']) }}</strong></div>
                 @endif
                 @if (!empty($aiActivationResult['metric_facts']))
                     <div class="font-semibold mb-1">Metric Facts</div>
@@ -2118,10 +2118,10 @@
                 @if (!empty($aiActivationResult['recommended_experiment']))
                     @php $experiment = $aiActivationResult['recommended_experiment']; @endphp
                     <div class="bg-slate-50 border border-slate-200 rounded-xl p-4 text-sm">
-                        <div class="font-semibold mb-1">Experiment: {{ $experiment['name'] ?? '-' }}</div>
-                        <div class="text-slate-700">{{ $experiment['change'] ?? '-' }}</div>
-                        <div class="text-xs text-slate-500 mt-2">Primary metric: {{ $experiment['primary_metric'] ?? '-' }}</div>
-                        <div class="text-xs text-slate-500">Success: {{ $experiment['success_criteria'] ?? '-' }}</div>
+                        <div class="font-semibold mb-1">Experiment: {{ $displayShortValue($experiment['name'] ?? '-') }}</div>
+                        <div class="text-slate-700 whitespace-pre-wrap">{{ $displayValue($experiment['change'] ?? '-') }}</div>
+                        <div class="text-xs text-slate-500 mt-2">Primary metric: {{ $displayValue($experiment['primary_metric'] ?? '-') }}</div>
+                        <div class="text-xs text-slate-500">Success: {{ $displayValue($experiment['success_criteria'] ?? '-') }}</div>
                     </div>
                 @endif
             </div>
@@ -2138,13 +2138,13 @@
                 class="mt-5 bg-white rounded-2xl p-5 shadow-sm border border-slate-200 min-w-0"
             >
                 <h3 class="text-lg font-bold mb-2">AI Retention Agent Detail</h3>
-                <p class="text-slate-700 mb-3">{{ $aiRetentionResult['diagnosis'] ?? '-' }}</p>
+                <p class="text-slate-700 mb-3 whitespace-pre-wrap">{{ $displayValue($aiRetentionResult['diagnosis'] ?? '-') }}</p>
                 @if (!empty($aiRetentionResult['habit_risk']))
-                    <div class="text-sm text-slate-500 mb-3">Habit risk: <strong class="text-slate-800">{{ $aiRetentionResult['habit_risk'] }}</strong></div>
+                    <div class="text-sm text-slate-500 mb-3">Habit risk: <strong class="text-slate-800">{{ $displayValue($aiRetentionResult['habit_risk']) }}</strong></div>
                 @endif
                 @if (!empty($aiRetentionResult['d0_to_d1_interpretation']))
                     <div class="font-semibold mb-1">D0 → D1 Interpretation</div>
-                    <p class="text-sm text-slate-700 mb-4">{{ $aiRetentionResult['d0_to_d1_interpretation'] }}</p>
+                    <p class="text-sm text-slate-700 mb-4 whitespace-pre-wrap">{{ $displayValue($aiRetentionResult['d0_to_d1_interpretation']) }}</p>
                 @endif
                 @if (!empty($aiRetentionResult['metric_facts']))
                     <div class="font-semibold mb-1">Metric Facts</div>
@@ -2157,11 +2157,11 @@
                 @if (!empty($aiRetentionResult['recommended_experiment']))
                     @php $experiment = $aiRetentionResult['recommended_experiment']; @endphp
                     <div class="bg-slate-50 border border-slate-200 rounded-xl p-4 text-sm">
-                        <div class="font-semibold mb-1">Experiment: {{ $experiment['name'] ?? '-' }}</div>
-                        <div class="text-slate-700">Target: {{ $experiment['target_segment'] ?? '-' }}</div>
-                        <div class="text-slate-700">{{ $experiment['change'] ?? '' }}</div>
-                        <div class="text-xs text-slate-500 mt-2">Primary metric: {{ $experiment['primary_metric'] ?? '-' }}</div>
-                        <div class="text-xs text-slate-500">Success: {{ $experiment['success_criteria'] ?? '-' }}</div>
+                        <div class="font-semibold mb-1">Experiment: {{ $displayShortValue($experiment['name'] ?? '-') }}</div>
+                        <div class="text-slate-700">Target: {{ $displayValue($experiment['target_segment'] ?? '-') }}</div>
+                        <div class="text-slate-700 whitespace-pre-wrap">{{ $displayValue($experiment['change'] ?? '') }}</div>
+                        <div class="text-xs text-slate-500 mt-2">Primary metric: {{ $displayValue($experiment['primary_metric'] ?? '-') }}</div>
+                        <div class="text-xs text-slate-500">Success: {{ $displayValue($experiment['success_criteria'] ?? '-') }}</div>
                     </div>
                 @endif
             </div>
@@ -2178,10 +2178,10 @@
                 class="mt-5 bg-white rounded-2xl p-5 shadow-sm border border-slate-200 min-w-0"
             >
                 <h3 class="text-lg font-bold mb-2">AI Monetization Agent Detail</h3>
-                <p class="text-slate-700 mb-3">{{ $aiMonetizationResult['diagnosis'] ?? '-' }}</p>
+                <p class="text-slate-700 mb-3 whitespace-pre-wrap">{{ $displayValue($aiMonetizationResult['diagnosis'] ?? '-') }}</p>
                 <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 text-sm text-slate-500 mb-4">
-                    <div>Revenue: <strong class="text-slate-800">{{ $aiMonetizationResult['revenue_signal'] ?? '-' }}</strong></div>
-                    <div>Activation risk: <strong class="text-slate-800">{{ $aiMonetizationResult['activation_risk'] ?? '-' }}</strong></div>
+                    <div>Revenue: <strong class="text-slate-800">{{ $displayValue($aiMonetizationResult['revenue_signal'] ?? '-') }}</strong></div>
+                    <div>Activation risk: <strong class="text-slate-800">{{ $displayValue($aiMonetizationResult['activation_risk'] ?? '-') }}</strong></div>
                 </div>
                 @if (!empty($aiMonetizationResult['opportunities']))
                     <div class="font-semibold mb-1">Opportunities</div>
@@ -2194,9 +2194,9 @@
                 @if (!empty($aiMonetizationResult['recommended_experiment']))
                     @php $experiment = $aiMonetizationResult['recommended_experiment']; @endphp
                     <div class="bg-slate-50 border border-slate-200 rounded-xl p-4 text-sm">
-                        <div class="font-semibold mb-1">Experiment: {{ $experiment['name'] ?? '-' }}</div>
-                        <div class="text-slate-700">Trigger: {{ $experiment['trigger_rule'] ?? '-' }}</div>
-                        <div class="text-xs text-slate-500 mt-2">Primary metric: {{ $experiment['primary_metric'] ?? '-' }}</div>
+                        <div class="font-semibold mb-1">Experiment: {{ $displayShortValue($experiment['name'] ?? '-') }}</div>
+                        <div class="text-slate-700 whitespace-pre-wrap">Trigger: {{ $displayValue($experiment['trigger_rule'] ?? '-') }}</div>
+                        <div class="text-xs text-slate-500 mt-2">Primary metric: {{ $displayValue($experiment['primary_metric'] ?? '-') }}</div>
                         <div class="text-xs text-slate-500">Guardrail: {{ $displayValue($experiment['guardrail_metric'] ?? '-') }}</div>
                     </div>
                 @endif
@@ -2214,11 +2214,11 @@
                 class="mt-5 bg-white rounded-2xl p-5 shadow-sm border border-slate-200 min-w-0"
             >
                 <h3 class="text-lg font-bold mb-2">AI Version Agent Detail</h3>
-                <p class="text-slate-700 mb-3">{{ $aiVersionResult['diagnosis'] ?? '-' }}</p>
+                <p class="text-slate-700 mb-3 whitespace-pre-wrap">{{ $displayValue($aiVersionResult['diagnosis'] ?? '-') }}</p>
                 <div class="grid grid-cols-1 sm:grid-cols-3 gap-2 text-sm text-slate-500 mb-4">
-                    <div>Best: <strong class="text-slate-800">{{ $aiVersionResult['best_version'] ?? '-' }}</strong></div>
-                    <div>Watch: <strong class="text-slate-800">{{ $aiVersionResult['version_under_watch'] ?? '-' }}</strong></div>
-                    <div>Decision: <strong class="text-slate-800">{{ $aiVersionResult['rollout_decision'] ?? '-' }}</strong></div>
+                    <div>Best: <strong class="text-slate-800">{{ $displayValue($aiVersionResult['best_version'] ?? '-') }}</strong></div>
+                    <div>Watch: <strong class="text-slate-800">{{ $displayValue($aiVersionResult['version_under_watch'] ?? '-') }}</strong></div>
+                    <div>Decision: <strong class="text-slate-800">{{ $displayValue($aiVersionResult['rollout_decision'] ?? '-') }}</strong></div>
                 </div>
                 @if (!empty($aiVersionResult['trusted_versions']))
                     <div class="font-semibold mb-1">Trusted Versions</div>
@@ -2260,19 +2260,19 @@
                 <div class="grid grid-cols-1 md:grid-cols-4 gap-3 mb-4">
                     <div class="bg-sky-50 border border-sky-200 rounded-xl p-4">
                         <div class="text-xs text-sky-700 mb-1">Ads Verdict</div>
-                        <div class="text-lg font-bold text-sky-950">{{ strtoupper(str_replace('_', ' ', $aiAdsResult['ads_verdict'] ?? ($adsMetrics['ads_verdict']['decision'] ?? '-'))) }}</div>
+                        <div class="text-lg font-bold text-sky-950">{{ strtoupper(str_replace('_', ' ', $displayShortValue($aiAdsResult['ads_verdict'] ?? ($adsMetrics['ads_verdict']['decision'] ?? '-')))) }}</div>
                     </div>
                     <div class="bg-slate-50 border border-slate-200 rounded-xl p-4">
                         <div class="text-xs text-slate-500 mb-1">Campaign Health</div>
-                        <div class="text-lg font-bold">{{ strtoupper(str_replace('_', ' ', $aiAdsResult['campaign_health'] ?? '-')) }}</div>
+                        <div class="text-lg font-bold">{{ strtoupper(str_replace('_', ' ', $displayShortValue($aiAdsResult['campaign_health'] ?? '-'))) }}</div>
                     </div>
                     <div class="bg-slate-50 border border-slate-200 rounded-xl p-4">
                         <div class="text-xs text-slate-500 mb-1">Budget Decision</div>
-                        <div class="text-lg font-bold">{{ strtoupper(str_replace('_', ' ', $aiAdsResult['budget_decision']['decision'] ?? '-')) }}</div>
+                        <div class="text-lg font-bold">{{ strtoupper(str_replace('_', ' ', $displayShortValue($aiAdsResult['budget_decision']['decision'] ?? '-'))) }}</div>
                     </div>
                     <div class="bg-slate-50 border border-slate-200 rounded-xl p-4">
                         <div class="text-xs text-slate-500 mb-1">Confidence</div>
-                        <div class="text-lg font-bold">{{ $aiAdsResult['confidence_score'] ?? '-' }}{{ isset($aiAdsResult['confidence_score']) ? '/100' : '' }}</div>
+                        <div class="text-lg font-bold">{{ $displayShortValue($aiAdsResult['confidence_score'] ?? '-') }}{{ isset($aiAdsResult['confidence_score']) ? '/100' : '' }}</div>
                     </div>
                 </div>
 
@@ -2634,9 +2634,9 @@
                                     <div class="font-bold text-slate-950 mb-2">Single Agent Baseline</div>
                                     <div class="space-y-2 text-sm">
                                         <div><span class="text-slate-500">Recommendation:</span> {{ $displayValue($singleAgentBaseline['recommendation'] ?? '-') }}</div>
-                                        <div><span class="text-slate-500">Missed unresolved conflicts:</span> <strong>{{ $singleAgentBaseline['missed_unresolved_conflicts'] ?? ($singleAgentBaseline['missed_conflicts'] ?? 0) }}</strong></div>
-                                        <div><span class="text-slate-500">Missed resolved material tensions:</span> <strong>{{ $singleAgentBaseline['missed_resolved_material_tensions'] ?? 0 }}</strong></div>
-                                        <div><span class="text-slate-500">Missed minor bounded cautions:</span> <strong>{{ $singleAgentBaseline['missed_minor_bounded_tensions'] ?? 0 }}</strong></div>
+                                        <div><span class="text-slate-500">Missed unresolved conflicts:</span> <strong>{{ $displayValue($singleAgentBaseline['missed_unresolved_conflicts'] ?? ($singleAgentBaseline['missed_conflicts'] ?? 0)) }}</strong></div>
+                                        <div><span class="text-slate-500">Missed resolved material tensions:</span> <strong>{{ $displayValue($singleAgentBaseline['missed_resolved_material_tensions'] ?? 0) }}</strong></div>
+                                        <div><span class="text-slate-500">Missed minor bounded cautions:</span> <strong>{{ $displayValue($singleAgentBaseline['missed_minor_bounded_tensions'] ?? 0) }}</strong></div>
                                         <div><span class="text-slate-500">Unsafe recommendation detected:</span> <strong>{{ !empty($singleAgentBaseline['unsafe_recommendation_detected']) ? 'yes' : 'no' }}</strong></div>
                                         <div><span class="text-slate-500">Evidence coverage:</span> <strong>{{ $displayValue($singleAgentBaseline['evidence_coverage_score'] ?? '-') }}</strong></div>
                                         <div><span class="text-slate-500">Caveat coverage:</span> <strong>{{ $displayValue($singleAgentBaseline['caveat_coverage_score'] ?? '-') }}</strong></div>
@@ -2646,9 +2646,9 @@
                                     <div class="font-bold text-emerald-950 mb-2">Agent Society</div>
                                     <div class="space-y-2 text-sm text-emerald-950">
                                         <div><span class="text-emerald-700">Recommendation:</span> {{ $displayValue($agentSocietyBaseline['recommendation'] ?? '-') }}</div>
-                                        <div><span class="text-emerald-700">Unresolved conflicts detected:</span> <strong>{{ $agentSocietyBaseline['unresolved_conflicts_detected'] ?? ($agentSocietyBaseline['conflicts_detected'] ?? 0) }}</strong></div>
-                                        <div><span class="text-emerald-700">Resolved material tensions detected:</span> <strong>{{ $agentSocietyBaseline['resolved_material_tensions_detected'] ?? 0 }}</strong></div>
-                                        <div><span class="text-emerald-700">Minor bounded cautions detected:</span> <strong>{{ $agentSocietyBaseline['minor_bounded_tensions_detected'] ?? 0 }}</strong></div>
+                                        <div><span class="text-emerald-700">Unresolved conflicts detected:</span> <strong>{{ $displayValue($agentSocietyBaseline['unresolved_conflicts_detected'] ?? ($agentSocietyBaseline['conflicts_detected'] ?? 0)) }}</strong></div>
+                                        <div><span class="text-emerald-700">Resolved material tensions detected:</span> <strong>{{ $displayValue($agentSocietyBaseline['resolved_material_tensions_detected'] ?? 0) }}</strong></div>
+                                        <div><span class="text-emerald-700">Minor bounded cautions detected:</span> <strong>{{ $displayValue($agentSocietyBaseline['minor_bounded_tensions_detected'] ?? 0) }}</strong></div>
                                         <div><span class="text-emerald-700">Unsafe recommendation prevented:</span> <strong>{{ !empty($agentSocietyBaseline['unsafe_recommendation_prevented']) ? 'yes' : 'no' }}</strong></div>
                                         <div><span class="text-emerald-700">Evidence coverage:</span> <strong>{{ $displayValue($agentSocietyBaseline['evidence_coverage_score'] ?? '-') }}</strong></div>
                                         <div><span class="text-emerald-700">Caveat coverage:</span> <strong>{{ $displayValue($agentSocietyBaseline['caveat_coverage_score'] ?? '-') }}</strong></div>
@@ -2679,7 +2679,7 @@
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
                         <div>
                             <div class="text-sm text-slate-500 mb-1">Business Status</div>
-                            <div class="text-xl font-bold mb-3">{{ $aiResult['business_status'] ?? '-' }}</div>
+                            <div class="text-xl font-bold mb-3">{{ $displayValue($aiResult['business_status'] ?? '-') }}</div>
                         </div>
 
                         @if (isset($aiResult['confidence_score']))
@@ -2689,7 +2689,7 @@
                                     <div class="w-full bg-slate-100 rounded-full h-2">
                                         <div class="bg-slate-800 h-2 rounded-full transition-all duration-500" style="width: {{ min(100, max(0, (int) $aiResult['confidence_score'])) }}%"></div>
                                     </div>
-                                    <div class="text-xs text-slate-500 mt-1">{{ $aiResult['confidence_score'] }}/100</div>
+                                    <div class="text-xs text-slate-500 mt-1">{{ $displayShortValue($aiResult['confidence_score']) }}/100</div>
                                 </div>
                             </div>
                         @endif
@@ -2783,19 +2783,19 @@
                                         <div class="text-sm text-cyan-900 mt-1">Baseline without major intervention compared with the scenario if the final recommendation is executed.</div>
                                     </div>
                                     <span class="shrink-0 inline-flex w-fit rounded-full px-3 py-1 text-[11px] font-semibold bg-white text-cyan-700 ring-1 ring-cyan-200">
-                                        {{ strtoupper(str_replace('_', ' ', $scenarioIntervention['confidence'] ?? ($decisionScenarioResult['simulation_scope'] ?? 'scenario'))) }}
+                                        {{ strtoupper(str_replace('_', ' ', $displayShortValue($scenarioIntervention['confidence'] ?? ($decisionScenarioResult['simulation_scope'] ?? 'scenario')))) }}
                                     </span>
                                 </div>
 
                                 <div class="grid grid-cols-1 lg:grid-cols-2 gap-3 text-sm mb-3">
                                     <div class="bg-white/80 border border-cyan-200 rounded-xl p-3 text-cyan-950">
                                         <div class="text-xs font-semibold text-cyan-700 mb-1">Baseline Without Intervention</div>
-                                        <div class="text-xs text-cyan-700 mb-2">Forecast For: {{ $scenarioBaseline['forecast_for_date'] ?? '-' }}</div>
+                                        <div class="text-xs text-cyan-700 mb-2">Forecast For: {{ $displayShortValue($scenarioBaseline['forecast_for_date'] ?? '-') }}</div>
                                         <div>{{ $displayValue($scenarioBaseline['summary'] ?? '-') }}</div>
                                     </div>
                                     <div class="bg-white/80 border border-cyan-200 rounded-xl p-3 text-cyan-950">
                                         <div class="text-xs font-semibold text-cyan-700 mb-1">Recommended Intervention</div>
-                                        <div class="font-semibold mb-2">{{ strtoupper(str_replace('_', ' ', $scenarioRecommendedAction['action'] ?? '-')) }}</div>
+                                        <div class="font-semibold mb-2">{{ strtoupper(str_replace('_', ' ', $displayShortValue($scenarioRecommendedAction['action'] ?? '-'))) }}</div>
                                         <div>{{ $displayValue($scenarioRecommendedAction['why_this_action'] ?? '-') }}</div>
                                     </div>
                                 </div>
@@ -2880,10 +2880,10 @@
                                 </div>
                                 <div class="text-sm {{ $simpleIsOperatingResolution ? 'text-emerald-900' : 'text-amber-900' }} mb-1">
                                     {{ $simpleIsOperatingResolution ? 'Operating resolution' : 'Winning guardrail' }}:
-                                    <strong>{{ $simpleIsOperatingResolution ? strtoupper(str_replace('_', ' ', $conflictRule['resolution_type'] ?? 'normal_operating_resolution')) : ($conflictRule['winning_guardrail'] ?? '-') }}</strong>
+                                    <strong>{{ $simpleIsOperatingResolution ? strtoupper(str_replace('_', ' ', $displayShortValue($conflictRule['resolution_type'] ?? 'normal_operating_resolution'))) : $displayShortValue($conflictRule['winning_guardrail'] ?? '-') }}</strong>
                                 </div>
                                 <div class="text-sm {{ $simpleIsOperatingResolution ? 'text-emerald-900' : 'text-amber-900' }}">
-                                    {{ $conflictRule['why_veto_won'] ?? ($conflictRule['rule_triggered'] ?? '-') }}
+                                    {{ $displayValue($conflictRule['why_veto_won'] ?? ($conflictRule['rule_triggered'] ?? '-')) }}
                                 </div>
                             </div>
                         @endif
