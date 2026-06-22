@@ -2,6 +2,7 @@
 
 namespace App\Services\GrowthDoctor;
 
+use App\Services\Ai\FinalDecisionContextBuilder;
 use App\Services\GrowthDoctor\Agents\ActivationAgent;
 use App\Services\GrowthDoctor\Agents\AiAdsAgent;
 use App\Services\GrowthDoctor\Agents\FinalDecisionAgent;
@@ -12,6 +13,7 @@ use App\Services\GrowthDoctor\Agents\RetentionAgent;
 use App\Services\GrowthDoctor\Agents\TomorrowForecastAgent;
 use App\Services\GrowthDoctor\Agents\VersionAgent;
 use App\Services\GrowthDoctor\RunProgressStore;
+use Illuminate\Support\Facades\Log;
 
 class AgentOrchestrator
 {
@@ -27,6 +29,7 @@ class AgentOrchestrator
     private $runProgressStore;
     private $structuredNegotiationService;
     private $baselineComparisonService;
+    private $finalDecisionContextBuilder;
 
     public function __construct(
         ActivationAgent $activationAgent,
@@ -40,7 +43,8 @@ class AgentOrchestrator
         AiAgentClient $aiAgentClient,
         RunProgressStore $runProgressStore,
         StructuredNegotiationService $structuredNegotiationService,
-        AgentSocietyBaselineComparisonService $baselineComparisonService
+        AgentSocietyBaselineComparisonService $baselineComparisonService,
+        FinalDecisionContextBuilder $finalDecisionContextBuilder
     ) {
         $this->activationAgent = $activationAgent;
         $this->retentionAgent = $retentionAgent;
@@ -54,6 +58,7 @@ class AgentOrchestrator
         $this->runProgressStore = $runProgressStore;
         $this->structuredNegotiationService = $structuredNegotiationService;
         $this->baselineComparisonService = $baselineComparisonService;
+        $this->finalDecisionContextBuilder = $finalDecisionContextBuilder;
     }
 
     public function run(array $metricsContext, ?string $trackedRunId = null): array
@@ -287,33 +292,84 @@ class AgentOrchestrator
             $forecastCalibration
         );
 
-        $finalDecisionContext = [
-            'metrics_context' => $metricsContext,
-            'specialist_agents' => $specialistAgents,
-            'structured_negotiation' => $structuredNegotiation,
-            'conflict_matrix' => $structuredNegotiation['orchestrator_package']['conflict_matrix']
-                ?? ($structuredNegotiation['conflict_matrix'] ?? ($structuredNegotiation['conflicts'] ?? [])),
-            'negotiation_summary' => $structuredNegotiation['summary'] ?? [],
-            'orchestrator_evidence_assembly' => $orchestratorEvidenceAssembly,
-            'evaluations' => [
+        $contextMode = (string) config('ai_growth_doctor.ai.final_decision_context_mode', 'compact');
+        $maxPayloadKb = (int) config('ai_growth_doctor.ai.final_decision_max_payload_kb', 120);
+        $maxPayloadBytes = max(1, $maxPayloadKb) * 1024;
+        $compactFinalDecisionContext = $this->finalDecisionContextBuilder->buildCompact(
+            $metricsContext,
+            $specialistAgents,
+            $structuredNegotiation,
+            [
                 'forecast_evaluations' => $forecastEvaluations,
                 'forecast_model_calibration' => $forecastCalibration,
             ],
-            'forecast_model_calibration' => $forecastCalibration,
+            []
+        );
+        $compactPayloadBytes = $this->finalDecisionContextBuilder->estimatedPayloadBytes($compactFinalDecisionContext);
+
+        if ($compactPayloadBytes > $maxPayloadBytes) {
+            Log::warning('final_decision_payload_too_large', [
+                'run_id' => $runId,
+                'payload_kb' => round($compactPayloadBytes / 1024, 1),
+                'max_payload_kb' => $maxPayloadKb,
+                'context_mode' => $contextMode,
+            ]);
+
+            $compactFinalDecisionContext = $this->finalDecisionContextBuilder->buildCompact(
+                $metricsContext,
+                $specialistAgents,
+                $structuredNegotiation,
+                [
+                    'forecast_evaluations' => $forecastEvaluations,
+                    'forecast_model_calibration' => $forecastCalibration,
+                ],
+                [],
+                true
+            );
+            $compactPayloadBytes = $this->finalDecisionContextBuilder->estimatedPayloadBytes($compactFinalDecisionContext);
+        }
+
+        $finalDecisionContext = [
+            'final_decision_compact_context' => $compactFinalDecisionContext,
+            'final_decision_context_mode' => $contextMode,
+            'compact_context_payload_bytes' => $compactPayloadBytes,
         ];
 
         $this->logInteraction($interactionLog, $runId, 'orchestrator', 'AI Final Decision Agent', 'agent_request', [
-            'shared_context' => ['metrics_context', 'metrics_context.app_profile', 'metrics_context.generic_metrics_context', 'metrics_context.mapping_validation', 'specialist_agents', 'structured_negotiation', 'conflict_matrix', 'evaluations.forecast_evaluations', 'evaluations.forecast_model_calibration'],
+            'shared_context' => [
+                'final_decision_compact_context',
+                'compact_core_metrics',
+                'compact_specialist_summaries',
+                'compact_structured_negotiation',
+                'compact_guardrail_policy',
+                'compact_forecast_evaluation',
+                'compact_baseline_comparison',
+            ],
             'execution_mode' => 'sequential_fan_in_after_parallel_specialists_and_adaptive_bounded_negotiation',
+            'final_decision_context_mode' => $contextMode,
+            'compact_context_payload_kb' => round($compactPayloadBytes / 1024, 1),
             'context_trace' => $this->buildFinalDecisionContextTrace($finalDecisionContext),
         ]);
         $this->markRunningIfTracked($isTracked, $runId, 'final_decision_agent', 'Final Decision Agent is resolving conflict and producing operating decision.');
         try {
             $aiDecisionAgent = $this->finalDecisionAgent->run($finalDecisionContext, [
                 'run_id' => $runId,
-                'shared_context_keys' => ['metrics_context', 'specialist_agents', 'structured_negotiation', 'conflict_matrix', 'negotiation_summary', 'orchestrator_evidence_assembly', 'evaluations', 'forecast_model_calibration'],
+                'shared_context_keys' => [
+                    'final_decision_compact_context',
+                    'compact_core_metrics',
+                    'compact_specialist_summaries',
+                    'compact_structured_negotiation',
+                    'compact_guardrail_policy',
+                    'compact_forecast_evaluation',
+                    'compact_baseline_comparison',
+                ],
+                'context_mode' => $contextMode,
+                'timeout_seconds' => (int) config('ai_growth_doctor.ai.final_decision_timeout_seconds', 90),
             ]);
             $aiDecisionAgent = $this->normalizeGenericAgentOutput($aiDecisionAgent);
+            if (($aiDecisionAgent['response_metrics']['status'] ?? null) === 'timeout') {
+                $aiDecisionAgent = $this->buildFinalDecisionFallback($aiDecisionAgent, $compactFinalDecisionContext);
+            }
             $agentRequestMetrics['ai_final_decision_agent'] = $this->extractAgentRequestMetrics($aiDecisionAgent);
             $this->markDoneIfTracked($isTracked, $runId, 'final_decision_agent', $aiDecisionAgent, 'Final Decision Agent completed.');
         } catch (\Throwable $e) {
@@ -597,6 +653,82 @@ class AgentOrchestrator
         });
     }
 
+    private function buildFinalDecisionFallback(array $failedAgent, array $compactContext): array
+    {
+        $guardrail = $compactContext['guardrail_policy'] ?? [];
+        $coreMetrics = $compactContext['core_metrics'] ?? [];
+        $structuredNegotiation = $compactContext['structured_negotiation'] ?? [];
+        $specialists = $compactContext['specialist_summaries'] ?? [];
+        $businessVerdict = $guardrail['deterministic_business_verdict'] ?? 'HOLD_AND_OPTIMIZE';
+        $mainDiagnosis = $this->fallbackMainDiagnosis($coreMetrics, $specialists);
+        $errorMessage = (string) ($failedAgent['response_metrics']['error_message'] ?? ($failedAgent['error'] ?? 'Final Decision LLM timed out.'));
+
+        $failedAgent['status'] = 'fallback';
+        $failedAgent['result'] = [
+            'status' => 'fallback',
+            'result_status' => 'deterministic_final_decision_fallback',
+            'business_verdict' => $businessVerdict,
+            'deterministic_guardrail_verdict' => $businessVerdict,
+            'agent_society_operating_verdict' => $guardrail['allowed_decision'] ?? 'HOLD_AND_OPTIMIZE',
+            'operating_decision_summary' => 'Use deterministic guardrails and compact specialist summaries while the Final Decision LLM is unavailable.',
+            'today_operator_summary' => 'Final Decision fallback used: hold unsafe scaling, prioritize activation/retention fixes, and keep ads/paywall changes guarded.',
+            'main_diagnosis' => $mainDiagnosis,
+            'action_plan' => [
+                'fix_session_to_workspace_onboarding',
+                'improve_day_1_reentry',
+                'guarded_reset_campaign_test',
+                'value_gated_paywall',
+            ],
+            'operating_decision' => [
+                'ads_decision' => [
+                    'decision' => 'hold_budget',
+                    'label' => 'Hold Budget',
+                    'confidence_score' => 55,
+                    'reason' => 'Fallback uses deterministic guardrails and compact ads evidence only.',
+                    'next_action' => 'Keep ads changes guarded until Final Decision LLM completes.',
+                    'guardrail_metric' => 'activation and retention quality',
+                ],
+                'product_decision' => [
+                    'decision' => 'prioritize_activation',
+                    'label' => 'Fix Activation',
+                    'confidence_score' => 60,
+                    'reason' => $mainDiagnosis,
+                    'next_action' => 'Improve session to workspace and early re-entry.',
+                    'success_metric' => 'workspace_users and D1 logged rate',
+                ],
+            ],
+            'structured_negotiation_summary' => $structuredNegotiation,
+            'specialist_summaries' => $specialists,
+            'llm_error' => [
+                'type' => 'timeout',
+                'message' => substr($errorMessage, 0, 500),
+            ],
+            'decision_usable' => true,
+            'fallback_reason' => 'Final Decision LLM timed out, but deterministic guardrail, specialist summaries, and structured negotiation were available.',
+        ];
+
+        return $failedAgent;
+    }
+
+    private function fallbackMainDiagnosis(array $coreMetrics, array $specialists): string
+    {
+        foreach (['ai_activation_agent', 'ai_retention_agent', 'ai_ads_agent'] as $key) {
+            $summary = $specialists[$key]['summary'] ?? null;
+            if (is_string($summary) && trim($summary) !== '') {
+                return $summary;
+            }
+        }
+
+        $activation = $coreMetrics['activation'] ?? [];
+        $retention = $coreMetrics['retention'] ?? [];
+
+        return sprintf(
+            'Compact fallback diagnosis: activation workspace entry and early retention need guarded optimization before aggressive scaling. Workspace users: %s; D1 logged rate: %s.',
+            $activation['workspace_users'] ?? 'unknown',
+            $retention['d1_logged_rate'] ?? 'unknown'
+        );
+    }
+
     private function logInteraction(array &$interactionLog, string $runId, string $from, string $to, string $messageType, array $payload = []): void
     {
         $interactionLog[] = [
@@ -642,6 +774,30 @@ class AgentOrchestrator
 
     private function buildFinalDecisionContextTrace(array $context): array
     {
+        if (isset($context['final_decision_compact_context']) && is_array($context['final_decision_compact_context'])) {
+            $compact = $context['final_decision_compact_context'];
+
+            return [
+                'context_mode' => $context['final_decision_context_mode'] ?? 'compact',
+                'compact_context_payload_bytes' => $context['compact_context_payload_bytes'] ?? null,
+                'compact_context_keys' => array_keys($compact),
+                'core_metric_groups' => array_keys($compact['core_metrics'] ?? []),
+                'specialist_summary_keys' => array_keys($compact['specialist_summaries'] ?? []),
+                'triggered_guardrails_count' => $compact['guardrail_policy']['triggered_guardrails_count'] ?? null,
+                'winning_guardrail' => $compact['guardrail_policy']['winning_guardrail'] ?? null,
+                'structured_negotiation' => [
+                    'rounds_completed' => $compact['structured_negotiation']['rounds_completed'] ?? null,
+                    'total_conflict_count' => $compact['structured_negotiation']['total_conflict_count'] ?? null,
+                    'key_tensions_count' => count($compact['structured_negotiation']['key_tensions'] ?? []),
+                ],
+                'forecast' => [
+                    'forecast_for_date' => $compact['forecast']['forecast_for_date'] ?? null,
+                    'latest_quality' => $compact['forecast']['evaluation']['latest_quality'] ?? null,
+                    'trust_score' => $compact['forecast']['calibration']['trust_score'] ?? null,
+                ],
+            ];
+        }
+
         $metricsContext = $context['metrics_context'] ?? [];
         $versionMetrics = $metricsContext['version_metrics'] ?? [];
         $adsMetrics = $metricsContext['ads_metrics'] ?? [];

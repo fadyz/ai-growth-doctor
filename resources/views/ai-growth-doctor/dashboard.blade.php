@@ -542,6 +542,7 @@
                                 <th class="text-right px-4 py-3">Estimated Tokens</th>
                                 <th class="text-right px-4 py-3">Timeout</th>
                                 <th class="text-right px-4 py-3">Duration</th>
+                                <th class="text-left px-4 py-3">Context</th>
                                 <th class="text-left px-4 py-3">Status</th>
                             </tr>
                         </thead>
@@ -554,6 +555,7 @@
                                     <td class="px-4 py-3 text-right">{{ $requestMetric['estimated_tokens'] ?? '-' }}</td>
                                     <td class="px-4 py-3 text-right">{{ $requestMetric['timeout_seconds'] ?? '-' }}s</td>
                                     <td class="px-4 py-3 text-right">{{ isset($requestMetric['duration_ms']) ? number_format(((float) $requestMetric['duration_ms']) / 1000, 2) . 's' : '-' }}</td>
+                                    <td class="px-4 py-3 text-slate-600">{{ $displayShortValue($requestMetric['context_mode'] ?? '-') }}</td>
                                     <td class="px-4 py-3">
                                         <span class="inline-flex rounded-full px-2.5 py-1 text-[11px] font-semibold {{ $statusBadgeClass($requestMetric['status'] ?? 'unknown') }}">
                                             {{ strtoupper(str_replace('_', ' ', $displayShortValue($requestMetric['status'] ?? 'unknown'))) }}
