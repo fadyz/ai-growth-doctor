@@ -4,12 +4,18 @@ namespace App\Services\GrowthDoctor\Agents;
 
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
 
 class AiAgentClient
 {
-    public function call(string $agentName, string $systemPrompt, array $expectedSchema, array $agentContext): array
-    {
-        $preparedRequest = $this->buildRequestPayload($agentName, $systemPrompt, $expectedSchema, $agentContext);
+    public function call(
+        string $agentName,
+        string $systemPrompt,
+        array $expectedSchema,
+        array $agentContext,
+        array $requestMeta = []
+    ): array {
+        $preparedRequest = $this->buildRequestPayload($agentName, $systemPrompt, $expectedSchema, $agentContext, $requestMeta);
 
         if ($preparedRequest['status'] === 'disabled') {
             return $preparedRequest['result'];
@@ -30,10 +36,11 @@ class AiAgentClient
 
         foreach ($requests as $key => $request) {
             $prepared = $this->buildRequestPayload(
-                (string)($request['agent_name'] ?? $request['agentName'] ?? $key),
-                (string)($request['system_prompt'] ?? $request['systemPrompt'] ?? ''),
-                (array)($request['expected_schema'] ?? $request['expectedSchema'] ?? []),
-                (array)($request['agent_context'] ?? $request['agentContext'] ?? [])
+                (string) ($request['agent_name'] ?? $request['agentName'] ?? $key),
+                (string) ($request['system_prompt'] ?? $request['systemPrompt'] ?? ''),
+                (array) ($request['expected_schema'] ?? $request['expectedSchema'] ?? []),
+                (array) ($request['agent_context'] ?? $request['agentContext'] ?? []),
+                (array) ($request['request_meta'] ?? $request['requestMeta'] ?? [])
             );
 
             $prepared['request_key'] = $key;
@@ -61,7 +68,7 @@ class AiAgentClient
 
         try {
             $client = new \GuzzleHttp\Client([
-                'timeout' => 120,
+                'timeout' => $this->maxTimeoutFromPreparedRequests($preparedRequests),
                 'http_errors' => false,
             ]);
 
@@ -70,6 +77,9 @@ class AiAgentClient
             foreach ($preparedRequests as $key => $prepared) {
                 $preparedRequests[$key]['started_at_epoch'] = microtime(true);
                 $preparedRequests[$key]['started_at'] = date('Y-m-d H:i:s');
+                $preparedRequests[$key]['request_metrics']['request_started_at'] = $preparedRequests[$key]['started_at'];
+
+                $this->logRequestPayload($preparedRequests[$key]);
 
                 $promises[$key] = $client->postAsync($prepared['chat_completions_url'], [
                     'headers' => [
@@ -77,6 +87,7 @@ class AiAgentClient
                         'Content-Type' => 'application/json',
                     ],
                     'json' => $prepared['http_payload'],
+                    'timeout' => $prepared['timeout_seconds'],
                 ])->then(
                     function ($response) use (&$preparedRequests, $key, $onResult) {
                         $preparedRequests[$key]['finished_at_epoch'] = microtime(true);
@@ -94,24 +105,7 @@ class AiAgentClient
                         $preparedRequests[$key]['finished_at_epoch'] = microtime(true);
                         $preparedRequests[$key]['finished_at'] = date('Y-m-d H:i:s');
 
-                        $result = [
-                            'agent' => $preparedRequests[$key]['agent_name'],
-                            'status' => 'exception',
-                            'execution' => [
-                                'mode' => 'parallel_http_pool',
-                                'request_key' => $preparedRequests[$key]['request_key'] ?? $key,
-                                'parallel_pool' => true,
-                                'request_started_at' => $preparedRequests[$key]['started_at'] ?? null,
-                                'request_finished_at' => $preparedRequests[$key]['finished_at'] ?? null,
-                                'request_duration_ms' => $this->durationMs($preparedRequests[$key]),
-                            ],
-                            'error' => $reason instanceof \Throwable ? $reason->getMessage() : (string) $reason,
-                            'cache' => [
-                                'hit' => false,
-                                'key' => $preparedRequests[$key]['cache_key'],
-                                'ttl_seconds' => $preparedRequests[$key]['cache_ttl_seconds'],
-                            ],
-                        ];
+                        $result = $this->buildThrowableFailureResult($preparedRequests[$key], $reason, 'parallel_http_pool');
 
                         if ($onResult) {
                             $onResult($key, $result);
@@ -133,184 +127,63 @@ class AiAgentClient
                 }
 
                 $reason = $settled['reason'] ?? null;
-                $results[$key] = [
-                    'agent' => $prepared['agent_name'],
-                    'status' => 'exception',
-                    'execution' => [
-                        'mode' => 'parallel_http_pool',
-                        'request_key' => $prepared['request_key'] ?? $key,
-                        'parallel_pool' => true,
-                        'request_started_at' => $prepared['started_at'] ?? null,
-                        'request_finished_at' => $prepared['finished_at'] ?? null,
-                        'request_duration_ms' => $this->durationMs($prepared),
-                    ],
-                    'error' => $reason instanceof \Throwable ? $reason->getMessage() : (string) $reason,
-                    'cache' => [
-                        'hit' => false,
-                        'key' => $prepared['cache_key'],
-                        'ttl_seconds' => $prepared['cache_ttl_seconds'],
-                    ],
-                ];
+                $results[$key] = $this->buildThrowableFailureResult($prepared, $reason, 'parallel_http_pool');
             }
         } catch (\Throwable $e) {
             foreach ($preparedRequests as $key => $prepared) {
-                $results[$key] = [
-                    'agent' => $prepared['agent_name'],
-                    'status' => 'exception',
-                    'execution' => [
-                        'mode' => 'parallel_http_pool_setup_failed',
-                        'request_key' => $prepared['request_key'] ?? $key,
-                        'parallel_pool' => true,
-                        'request_started_at' => $prepared['started_at'] ?? null,
-                        'request_finished_at' => $prepared['finished_at'] ?? null,
-                        'request_duration_ms' => $this->durationMs($prepared),
-                    ],
-                    'error' => $e->getMessage(),
-                    'cache' => [
-                        'hit' => false,
-                        'key' => $prepared['cache_key'],
-                        'ttl_seconds' => $prepared['cache_ttl_seconds'],
-                    ],
-                ];
+                $results[$key] = $this->buildThrowableFailureResult($prepared, $e, 'parallel_http_pool_setup_failed');
+
                 if ($onResult) {
                     $onResult($key, $results[$key]);
                 }
             }
         }
+
         return $this->orderedResults($results, $requestOrder);
     }
 
-    private function handleGuzzleResponse(array $preparedRequest, $response): array
-    {
-        if (!$response || !method_exists($response, 'getStatusCode')) {
-            return [
-                'agent' => $preparedRequest['agent_name'],
-                'status' => 'error',
-                'execution' => [
-                    'mode' => 'parallel_http_pool',
-                    'request_key' => $preparedRequest['request_key'] ?? null,
-                    'parallel_pool' => true,
-                    'request_started_at' => $preparedRequest['started_at'] ?? null,
-                    'request_finished_at' => $preparedRequest['finished_at'] ?? null,
-                    'request_duration_ms' => $this->durationMs($preparedRequest),
-                ],
-                'error' => 'No HTTP response returned by Guzzle AI client.',
-                'cache' => [
-                    'hit' => false,
-                    'key' => $preparedRequest['cache_key'],
-                    'ttl_seconds' => $preparedRequest['cache_ttl_seconds'],
-                ],
-            ];
-        }
-
-        $statusCode = (int) $response->getStatusCode();
-        $body = (string) $response->getBody();
-
-        if ($statusCode < 200 || $statusCode >= 300) {
-            return [
-                'agent' => $preparedRequest['agent_name'],
-                'status' => 'error',
-                'execution' => [
-                    'mode' => 'parallel_http_pool',
-                    'request_key' => $preparedRequest['request_key'] ?? null,
-                    'parallel_pool' => true,
-                    'request_started_at' => $preparedRequest['started_at'] ?? null,
-                    'request_finished_at' => $preparedRequest['finished_at'] ?? null,
-                    'request_duration_ms' => $this->durationMs($preparedRequest),
-                ],
-                'error' => $body,
-                'cache' => [
-                    'hit' => false,
-                    'key' => $preparedRequest['cache_key'],
-                    'ttl_seconds' => $preparedRequest['cache_ttl_seconds'],
-                ],
-            ];
-        }
-
-        $json = json_decode($body, true);
-        $content = $this->extractAiContent(is_array($json) ? $json : []);
-        $decoded = $this->decodeAiJsonContent($content);
-
-        if (!$decoded) {
-            return [
-                'agent' => $preparedRequest['agent_name'],
-                'status' => 'invalid_json',
-                'execution' => [
-                    'mode' => 'parallel_http_pool',
-                    'request_key' => $preparedRequest['request_key'] ?? null,
-                    'parallel_pool' => true,
-                    'request_started_at' => $preparedRequest['started_at'] ?? null,
-                    'request_finished_at' => $preparedRequest['finished_at'] ?? null,
-                    'request_duration_ms' => $this->durationMs($preparedRequest),
-                ],
-                'raw_response' => $content,
-                'raw_response_type' => gettype($content),
-                'cache' => [
-                    'hit' => false,
-                    'key' => $preparedRequest['cache_key'],
-                    'ttl_seconds' => $preparedRequest['cache_ttl_seconds'],
-                ],
-            ];
-        }
-
-        $result = [
-            'agent' => $preparedRequest['agent_name'],
-            'status' => 'active',
-            'execution' => [
-                'mode' => 'parallel_http_pool',
-                'request_key' => $preparedRequest['request_key'] ?? null,
-                'parallel_pool' => true,
-                'request_started_at' => $preparedRequest['started_at'] ?? null,
-                'request_finished_at' => $preparedRequest['finished_at'] ?? null,
-                'request_duration_ms' => $this->durationMs($preparedRequest),
-            ],
-            'model' => $preparedRequest['model'],
-            'api_base_url' => $preparedRequest['api_base_url'] ?? null,
-            'result' => $decoded,
-            'cache' => [
-                'hit' => false,
-                'key' => $preparedRequest['cache_key'],
-                'ttl_seconds' => $preparedRequest['cache_ttl_seconds'],
-            ],
-        ];
-
-        if (($preparedRequest['cache_ttl_seconds'] ?? 0) > 0) {
-            Cache::put($preparedRequest['cache_key'], $result, $preparedRequest['cache_ttl_seconds']);
-        }
-
-        return $result;
-    }
-
-    public function prepareRequest(string $agentName, string $systemPrompt, array $expectedSchema, array $agentContext): array
-    {
+    public function prepareRequest(
+        string $agentName,
+        string $systemPrompt,
+        array $expectedSchema,
+        array $agentContext,
+        array $requestMeta = []
+    ): array {
         return [
             'agent_name' => $agentName,
             'system_prompt' => $systemPrompt,
             'expected_schema' => $expectedSchema,
             'agent_context' => $agentContext,
+            'request_meta' => $requestMeta,
         ];
     }
 
     public function outputLanguage(): string
     {
-        $language = trim((string) env('AI_OUTPUT_LANGUAGE', 'English'));
+        $language = trim((string) config('ai_growth_doctor.ai.output_language', 'English'));
 
         return $language !== '' ? $language : 'English';
     }
 
-    private function buildRequestPayload(string $agentName, string $systemPrompt, array $expectedSchema, array $agentContext): array
-    {
+    private function buildRequestPayload(
+        string $agentName,
+        string $systemPrompt,
+        array $expectedSchema,
+        array $agentContext,
+        array $requestMeta = []
+    ): array {
         $systemPrompt = trim($systemPrompt . "\n\n" . $this->genericGrowthContractInstruction());
         $expectedSchema = $this->addGenericOutputFields($expectedSchema);
+        $provider = $this->provider();
         $apiKey = $this->apiKey();
         $model = $this->model();
         $apiBaseUrl = $this->apiBaseUrl();
         $chatCompletionsUrl = $this->chatCompletionsUrl($apiBaseUrl);
+        $timeoutSeconds = $this->resolveTimeoutSeconds($requestMeta);
 
         if (!$apiKey) {
-            $provider = env('AI_PROVIDER', 'openai');
             $diagnosis = 'AI API key is not configured.';
-            
+
             if ($provider === 'qwen') {
                 $diagnosis .= ' Set QWEN_API_KEY to enable AI agents.';
             } elseif ($provider === 'sumopod') {
@@ -318,7 +191,7 @@ class AiAgentClient
             } else {
                 $diagnosis .= ' Set OPENAI_API_KEY to enable AI agents.';
             }
-            
+
             return [
                 'status' => 'disabled',
                 'result' => [
@@ -339,24 +212,7 @@ class AiAgentClient
         ];
 
         $cacheKey = 'ai_growth_doctor:agent:' . sha1(json_encode($cachePayload, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE));
-        $cacheTtlSeconds = (int) env('AI_AGENT_CACHE_TTL_SECONDS', 1800);
-
-        if ($cacheTtlSeconds > 0 && Cache::has($cacheKey)) {
-            $cached = Cache::get($cacheKey);
-
-            if (is_array($cached)) {
-                $cached['cache'] = [
-                    'hit' => true,
-                    'key' => $cacheKey,
-                    'ttl_seconds' => $cacheTtlSeconds,
-                ];
-
-                return [
-                    'status' => 'cached',
-                    'result' => $cached,
-                ];
-            }
-        }
+        $cacheTtlSeconds = (int) config('ai_growth_doctor.ai.agent_cache_ttl_seconds', 1800);
 
         $prompt = [
             [
@@ -373,25 +229,73 @@ class AiAgentClient
             ],
         ];
 
-        return [
+        $httpPayload = [
+            'model' => $model,
+            'messages' => $prompt,
+            'temperature' => 0.2,
+            'response_format' => [
+                'type' => 'json_object',
+            ],
+        ];
+
+        $payloadJson = json_encode($httpPayload, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+        $payloadBytes = strlen($payloadJson ?: '');
+        $estimatedTokens = (int) ceil($payloadBytes / 4);
+        $sharedContextKeys = array_values($requestMeta['shared_context_keys'] ?? array_keys($agentContext));
+        $requestMetrics = [
+            'run_id' => $requestMeta['run_id'] ?? null,
+            'agent' => $agentName,
+            'model' => $model,
+            'provider' => $provider,
+            'endpoint' => $chatCompletionsUrl,
+            'base_url' => $apiBaseUrl,
+            'payload_bytes' => $payloadBytes,
+            'estimated_tokens' => $estimatedTokens,
+            'message_count' => count($httpPayload['messages'] ?? []),
+            'shared_context_keys' => $sharedContextKeys,
+            'timeout_seconds' => $timeoutSeconds,
+            'request_started_at' => null,
+            'context_mode' => $requestMeta['context_mode'] ?? null,
+        ];
+
+        if ($cacheTtlSeconds > 0 && Cache::has($cacheKey)) {
+            $cached = Cache::get($cacheKey);
+
+            if (is_array($cached)) {
+                $cached['cache'] = [
+                    'hit' => true,
+                    'key' => $cacheKey,
+                    'ttl_seconds' => $cacheTtlSeconds,
+                ];
+                $cached['request_metrics'] = $cached['request_metrics'] ?? $requestMetrics;
+
+                return [
+                    'status' => 'cached',
+                    'result' => $cached,
+                ];
+            }
+        }
+
+        $prepared = [
             'status' => 'ready',
             'agent_name' => $agentName,
             'request_key' => null,
             'api_key' => $apiKey,
+            'provider' => $provider,
             'model' => $model,
             'api_base_url' => $apiBaseUrl,
             'chat_completions_url' => $chatCompletionsUrl,
             'cache_key' => $cacheKey,
             'cache_ttl_seconds' => $cacheTtlSeconds,
-            'http_payload' => [
-                'model' => $model,
-                'messages' => $prompt,
-                'temperature' => 0.2,
-                'response_format' => [
-                    'type' => 'json_object',
-                ],
-            ],
+            'timeout_seconds' => $timeoutSeconds,
+            'http_payload' => $httpPayload,
+            'request_meta' => $requestMeta,
+            'request_metrics' => $requestMetrics,
         ];
+
+        $this->maybeLogPayloadBody($prepared, $payloadJson ?: '');
+
+        return $prepared;
     }
 
     private function genericGrowthContractInstruction(): string
@@ -432,9 +336,12 @@ class AiAgentClient
         try {
             $preparedRequest['started_at_epoch'] = microtime(true);
             $preparedRequest['started_at'] = date('Y-m-d H:i:s');
+            $preparedRequest['request_metrics']['request_started_at'] = $preparedRequest['started_at'];
+
+            $this->logRequestPayload($preparedRequest);
 
             $response = Http::withToken($preparedRequest['api_key'])
-                ->timeout(120)
+                ->timeout($preparedRequest['timeout_seconds'])
                 ->post($preparedRequest['chat_completions_url'], $preparedRequest['http_payload']);
 
             $preparedRequest['finished_at_epoch'] = microtime(true);
@@ -442,108 +349,81 @@ class AiAgentClient
 
             return $this->handleHttpResponse($preparedRequest, $response);
         } catch (\Throwable $e) {
-            return [
-                'agent' => $preparedRequest['agent_name'],
-                'status' => 'exception',
-                'execution' => [
-                    'mode' => 'single_http_call',
-                    'request_key' => $preparedRequest['request_key'] ?? null,
-                    'parallel_pool' => false,
-                    'request_started_at' => $preparedRequest['started_at'] ?? null,
-                    'request_finished_at' => $preparedRequest['finished_at'] ?? date('Y-m-d H:i:s'),
-                    'request_duration_ms' => $this->durationMs($preparedRequest),
-                ],
-                'error' => $e->getMessage(),
-                'cache' => [
-                    'hit' => false,
-                    'key' => $preparedRequest['cache_key'],
-                    'ttl_seconds' => $preparedRequest['cache_ttl_seconds'],
-                ],
-            ];
+            $preparedRequest['finished_at_epoch'] = microtime(true);
+            $preparedRequest['finished_at'] = date('Y-m-d H:i:s');
+
+            return $this->buildThrowableFailureResult($preparedRequest, $e, 'single_http_call');
         }
     }
 
     private function handleHttpResponse(array $preparedRequest, $response): array
     {
+        $executionMode = $preparedRequest['request_key'] !== null ? 'parallel_http_pool' : 'single_http_call';
+
         if (!$response || !method_exists($response, 'successful')) {
-            return [
-                'agent' => $preparedRequest['agent_name'],
-                'status' => 'error',
-                'execution' => [
-                    'mode' => $preparedRequest['request_key'] !== null ? 'parallel_http_pool' : 'single_http_call',
-                    'request_key' => $preparedRequest['request_key'] ?? null,
-                    'parallel_pool' => $preparedRequest['request_key'] !== null,
-                    'request_started_at' => $preparedRequest['started_at'] ?? null,
-                    'request_finished_at' => $preparedRequest['finished_at'] ?? null,
-                    'request_duration_ms' => $this->durationMs($preparedRequest),
-                ],
-                'error' => 'No HTTP response returned by AI client.',
-                'cache' => [
-                    'hit' => false,
-                    'key' => $preparedRequest['cache_key'],
-                    'ttl_seconds' => $preparedRequest['cache_ttl_seconds'],
-                ],
-            ];
+            $result = $this->baseFailureResult(
+                $preparedRequest,
+                'error',
+                'provider_error',
+                'No HTTP response returned by AI client.',
+                $executionMode
+            );
+
+            $this->logResponseOutcome($preparedRequest, $result);
+
+            return $result;
         }
 
+        $responseBody = (string) $response->body();
+        $httpStatus = method_exists($response, 'status') ? $response->status() : null;
+
         if (!$response->successful()) {
-            return [
-                'agent' => $preparedRequest['agent_name'],
-                'status' => 'error',
-                'execution' => [
-                    'mode' => $preparedRequest['request_key'] !== null ? 'parallel_http_pool' : 'single_http_call',
-                    'request_key' => $preparedRequest['request_key'] ?? null,
-                    'parallel_pool' => $preparedRequest['request_key'] !== null,
-                    'request_started_at' => $preparedRequest['started_at'] ?? null,
-                    'request_finished_at' => $preparedRequest['finished_at'] ?? null,
-                    'request_duration_ms' => $this->durationMs($preparedRequest),
-                ],
-                'error' => $response->body(),
-                'cache' => [
-                    'hit' => false,
-                    'key' => $preparedRequest['cache_key'],
-                    'ttl_seconds' => $preparedRequest['cache_ttl_seconds'],
-                ],
-            ];
+            $result = $this->baseFailureResult(
+                $preparedRequest,
+                'error',
+                $this->classifyHttpFailureStatus($httpStatus),
+                $responseBody,
+                $executionMode,
+                [
+                    'http_status' => $httpStatus,
+                    'response_bytes' => strlen($responseBody),
+                ]
+            );
+
+            $this->logResponseOutcome($preparedRequest, $result);
+
+            return $result;
         }
 
         $content = $this->extractAiContent($response->json());
         $decoded = $this->decodeAiJsonContent($content);
 
         if (!$decoded) {
-            return [
-                'agent' => $preparedRequest['agent_name'],
-                'status' => 'invalid_json',
-                'execution' => [
-                    'mode' => $preparedRequest['request_key'] !== null ? 'parallel_http_pool' : 'single_http_call',
-                    'request_key' => $preparedRequest['request_key'] ?? null,
-                    'parallel_pool' => $preparedRequest['request_key'] !== null,
-                    'request_started_at' => $preparedRequest['started_at'] ?? null,
-                    'request_finished_at' => $preparedRequest['finished_at'] ?? null,
-                    'request_duration_ms' => $this->durationMs($preparedRequest),
-                ],
-                'raw_response' => $content,
-                'raw_response_type' => gettype($content),
-                'cache' => [
-                    'hit' => false,
-                    'key' => $preparedRequest['cache_key'],
-                    'ttl_seconds' => $preparedRequest['cache_ttl_seconds'],
-                ],
-            ];
+            $result = $this->baseFailureResult(
+                $preparedRequest,
+                'invalid_json',
+                'parse_error',
+                'AI response could not be parsed into JSON.',
+                $executionMode,
+                [
+                    'http_status' => $httpStatus,
+                    'response_bytes' => strlen(is_string($content) ? $content : json_encode($content, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE)),
+                    'raw_response' => $content,
+                    'raw_response_type' => gettype($content),
+                ]
+            );
+
+            $this->logResponseOutcome($preparedRequest, $result);
+
+            return $result;
         }
 
         $result = [
             'agent' => $preparedRequest['agent_name'],
             'status' => 'active',
-            'execution' => [
-                'mode' => $preparedRequest['request_key'] !== null ? 'parallel_http_pool' : 'single_http_call',
-                'request_key' => $preparedRequest['request_key'] ?? null,
-                'parallel_pool' => $preparedRequest['request_key'] !== null,
-                'request_started_at' => $preparedRequest['started_at'] ?? null,
-                'request_finished_at' => $preparedRequest['finished_at'] ?? null,
-                'request_duration_ms' => $this->durationMs($preparedRequest),
-            ],
+            'execution' => $this->buildExecution($preparedRequest, $executionMode),
             'model' => $preparedRequest['model'],
+            'provider' => $preparedRequest['provider'],
             'api_base_url' => $preparedRequest['api_base_url'] ?? null,
             'result' => $decoded,
             'cache' => [
@@ -551,13 +431,181 @@ class AiAgentClient
                 'key' => $preparedRequest['cache_key'],
                 'ttl_seconds' => $preparedRequest['cache_ttl_seconds'],
             ],
+            'request_metrics' => $preparedRequest['request_metrics'],
+            'response_metrics' => [
+                'status' => 'success',
+                'duration_ms' => $this->durationMs($preparedRequest),
+                'http_status' => $httpStatus,
+                'response_bytes' => strlen($responseBody),
+            ],
         ];
 
         if (($preparedRequest['cache_ttl_seconds'] ?? 0) > 0) {
             Cache::put($preparedRequest['cache_key'], $result, $preparedRequest['cache_ttl_seconds']);
         }
 
+        $this->logResponseOutcome($preparedRequest, $result);
+
         return $result;
+    }
+
+    private function handleGuzzleResponse(array $preparedRequest, $response): array
+    {
+        if (!$response || !method_exists($response, 'getStatusCode')) {
+            $result = $this->baseFailureResult(
+                $preparedRequest,
+                'error',
+                'provider_error',
+                'No HTTP response returned by Guzzle AI client.',
+                'parallel_http_pool'
+            );
+
+            $this->logResponseOutcome($preparedRequest, $result);
+
+            return $result;
+        }
+
+        $statusCode = (int) $response->getStatusCode();
+        $body = (string) $response->getBody();
+
+        if ($statusCode < 200 || $statusCode >= 300) {
+            $result = $this->baseFailureResult(
+                $preparedRequest,
+                'error',
+                $this->classifyHttpFailureStatus($statusCode),
+                $body,
+                'parallel_http_pool',
+                [
+                    'http_status' => $statusCode,
+                    'response_bytes' => strlen($body),
+                ]
+            );
+
+            $this->logResponseOutcome($preparedRequest, $result);
+
+            return $result;
+        }
+
+        $json = json_decode($body, true);
+        $content = $this->extractAiContent(is_array($json) ? $json : []);
+        $decoded = $this->decodeAiJsonContent($content);
+
+        if (!$decoded) {
+            $result = $this->baseFailureResult(
+                $preparedRequest,
+                'invalid_json',
+                'parse_error',
+                'AI response could not be parsed into JSON.',
+                'parallel_http_pool',
+                [
+                    'http_status' => $statusCode,
+                    'response_bytes' => strlen(is_string($content) ? $content : json_encode($content, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE)),
+                    'raw_response' => $content,
+                    'raw_response_type' => gettype($content),
+                ]
+            );
+
+            $this->logResponseOutcome($preparedRequest, $result);
+
+            return $result;
+        }
+
+        $result = [
+            'agent' => $preparedRequest['agent_name'],
+            'status' => 'active',
+            'execution' => $this->buildExecution($preparedRequest, 'parallel_http_pool'),
+            'model' => $preparedRequest['model'],
+            'provider' => $preparedRequest['provider'],
+            'api_base_url' => $preparedRequest['api_base_url'] ?? null,
+            'result' => $decoded,
+            'cache' => [
+                'hit' => false,
+                'key' => $preparedRequest['cache_key'],
+                'ttl_seconds' => $preparedRequest['cache_ttl_seconds'],
+            ],
+            'request_metrics' => $preparedRequest['request_metrics'],
+            'response_metrics' => [
+                'status' => 'success',
+                'duration_ms' => $this->durationMs($preparedRequest),
+                'http_status' => $statusCode,
+                'response_bytes' => strlen($body),
+            ],
+        ];
+
+        if (($preparedRequest['cache_ttl_seconds'] ?? 0) > 0) {
+            Cache::put($preparedRequest['cache_key'], $result, $preparedRequest['cache_ttl_seconds']);
+        }
+
+        $this->logResponseOutcome($preparedRequest, $result);
+
+        return $result;
+    }
+
+    private function buildThrowableFailureResult(array $preparedRequest, $reason, string $executionMode): array
+    {
+        $message = $reason instanceof \Throwable ? $reason->getMessage() : (string) $reason;
+        $errorClass = $reason instanceof \Throwable ? get_class($reason) : null;
+        $providerStatus = $this->classifyThrowableStatus($message, $reason);
+
+        $result = $this->baseFailureResult(
+            $preparedRequest,
+            'exception',
+            $providerStatus,
+            $message,
+            $executionMode,
+            [
+                'error_class' => $errorClass,
+            ]
+        );
+
+        $this->logResponseOutcome($preparedRequest, $result);
+
+        return $result;
+    }
+
+    private function baseFailureResult(
+        array $preparedRequest,
+        string $status,
+        string $providerStatus,
+        string $errorMessage,
+        string $executionMode,
+        array $extra = []
+    ): array {
+        return array_merge([
+            'agent' => $preparedRequest['agent_name'],
+            'status' => $status,
+            'execution' => $this->buildExecution($preparedRequest, $executionMode),
+            'model' => $preparedRequest['model'] ?? null,
+            'provider' => $preparedRequest['provider'] ?? null,
+            'api_base_url' => $preparedRequest['api_base_url'] ?? null,
+            'error' => $errorMessage,
+            'cache' => [
+                'hit' => false,
+                'key' => $preparedRequest['cache_key'] ?? null,
+                'ttl_seconds' => $preparedRequest['cache_ttl_seconds'] ?? null,
+            ],
+            'request_metrics' => $preparedRequest['request_metrics'] ?? null,
+            'response_metrics' => [
+                'status' => $providerStatus,
+                'duration_ms' => $this->durationMs($preparedRequest),
+                'http_status' => $extra['http_status'] ?? null,
+                'response_bytes' => $extra['response_bytes'] ?? null,
+                'error_class' => $extra['error_class'] ?? null,
+                'error_message' => $this->truncateForLog($errorMessage),
+            ],
+        ], $extra);
+    }
+
+    private function buildExecution(array $preparedRequest, string $executionMode): array
+    {
+        return [
+            'mode' => $executionMode,
+            'request_key' => $preparedRequest['request_key'] ?? null,
+            'parallel_pool' => $preparedRequest['request_key'] !== null,
+            'request_started_at' => $preparedRequest['started_at'] ?? null,
+            'request_finished_at' => $preparedRequest['finished_at'] ?? null,
+            'request_duration_ms' => $this->durationMs($preparedRequest),
+        ];
     }
 
     private function attachExecutionMetadata(array $result, array $execution): array
@@ -619,67 +667,54 @@ class AiAgentClient
         return $normalized;
     }
 
+    private function provider(): string
+    {
+        return (string) config('ai_growth_doctor.ai.provider', env('AI_PROVIDER', 'openai'));
+    }
+
     private function apiKey(): ?string
     {
-        $provider = env('AI_PROVIDER', 'openai');
-        
+        $provider = $this->provider();
+
         if ($provider === 'qwen') {
-            return config('services.qwen.api_key')
-                ?: env('QWEN_API_KEY');
-        } elseif ($provider === 'sumopod') {
-            return config('services.sumopod.api_key')
-                ?: env('SUMOPOD_API_KEY');
+            return config('services.qwen.api_key') ?: env('QWEN_API_KEY');
         }
-        
-        return config('services.openai.api_key')
-            ?: env('OPENAI_API_KEY');
+
+        if ($provider === 'sumopod') {
+            return config('services.sumopod.api_key') ?: env('SUMOPOD_API_KEY');
+        }
+
+        return config('services.openai.api_key') ?: env('OPENAI_API_KEY');
     }
 
     private function model(): string
     {
-        $provider = env('AI_PROVIDER', 'openai');
-        
+        $provider = $this->provider();
+
         if ($provider === 'qwen') {
-            return config('services.qwen.model')
-                ?: env('QWEN_MODEL')
-                ?: 'qwen-plus';
-        } elseif ($provider === 'sumopod') {
-            return config('services.sumopod.model')
-                ?: env('SUMOPOD_MODEL')
-                ?: 'gpt-5.4-nano';
+            return config('services.qwen.model') ?: 'qwen-plus';
         }
-        
-        return config('services.openai.model')
-            ?: env('OPENAI_MODEL')
-            ?: 'gpt-5-nano';
+
+        if ($provider === 'sumopod') {
+            return config('services.sumopod.model') ?: 'gpt-5.4-nano';
+        }
+
+        return config('services.openai.model') ?: 'gpt-5-nano';
     }
 
     private function apiBaseUrl(): string
     {
-        $provider = env('AI_PROVIDER', 'openai');
-        
+        $provider = $this->provider();
+
         if ($provider === 'qwen') {
-            return rtrim(
-                config('services.qwen.base_url')
-                    ?: env('QWEN_BASE_URL')
-                    ?: 'https://dashscope-intl.aliyuncs.com/compatible-mode/v1',
-                '/'
-            );
-        } elseif ($provider === 'sumopod') {
-            return rtrim(
-                config('services.sumopod.base_url')
-                    ?: env('SUMOPOD_BASE_URL')
-                    ?: 'https://ai.sumopod.com',
-                '/'
-            );
+            return rtrim((string) (config('services.qwen.base_url') ?: 'https://dashscope-intl.aliyuncs.com/compatible-mode/v1'), '/');
         }
-        
-        return rtrim(
-            config('services.openai.base_url')
-                ?: env('OPENAI_BASE_URL')
-                ?: 'https://api.openai.com/v1',
-            '/'
-        );
+
+        if ($provider === 'sumopod') {
+            return rtrim((string) (config('services.sumopod.base_url') ?: 'https://ai.sumopod.com'), '/');
+        }
+
+        return rtrim((string) (config('services.openai.base_url') ?: 'https://api.openai.com/v1'), '/');
     }
 
     private function chatCompletionsUrl(string $apiBaseUrl): string
@@ -689,6 +724,133 @@ class AiAgentClient
         }
 
         return $apiBaseUrl . '/v1/chat/completions';
+    }
+
+    private function resolveTimeoutSeconds(array $requestMeta): int
+    {
+        $timeout = (int) ($requestMeta['timeout_seconds'] ?? config('ai_growth_doctor.ai.agent_timeout_seconds', 90));
+
+        return $timeout > 0 ? $timeout : 90;
+    }
+
+    private function maxTimeoutFromPreparedRequests(array $preparedRequests): int
+    {
+        $timeouts = array_map(function (array $preparedRequest) {
+            return (int) ($preparedRequest['timeout_seconds'] ?? 90);
+        }, $preparedRequests);
+
+        return max($timeouts ?: [90]);
+    }
+
+    private function logRequestPayload(array $preparedRequest): void
+    {
+        if (!config('ai_growth_doctor.ai.log_agent_payload_size', true)) {
+            return;
+        }
+
+        $requestMetrics = $preparedRequest['request_metrics'] ?? [];
+        $requestMetrics['request_started_at'] = $preparedRequest['started_at'] ?? null;
+
+        Log::info('ai_agent_request_payload_size', [
+            'run_id' => $requestMetrics['run_id'] ?? null,
+            'agent_name' => $preparedRequest['agent_name'] ?? null,
+            'model' => $preparedRequest['model'] ?? null,
+            'provider' => $preparedRequest['provider'] ?? null,
+            'endpoint' => $preparedRequest['chat_completions_url'] ?? null,
+            'base_url' => $preparedRequest['api_base_url'] ?? null,
+            'payload_bytes' => $requestMetrics['payload_bytes'] ?? null,
+            'estimated_tokens' => $requestMetrics['estimated_tokens'] ?? null,
+            'message_count' => $requestMetrics['message_count'] ?? null,
+            'shared_context_keys' => $requestMetrics['shared_context_keys'] ?? [],
+            'timeout_seconds' => $requestMetrics['timeout_seconds'] ?? null,
+            'request_started_at' => $requestMetrics['request_started_at'] ?? null,
+            'context_mode' => $requestMetrics['context_mode'] ?? null,
+        ]);
+    }
+
+    private function maybeLogPayloadBody(array $preparedRequest, string $payloadJson): void
+    {
+        if (!config('app.debug') || !config('ai_growth_doctor.ai.log_agent_payload_body', false)) {
+            return;
+        }
+
+        Log::debug('ai_agent_request_payload_body', [
+            'run_id' => $preparedRequest['request_metrics']['run_id'] ?? null,
+            'agent_name' => $preparedRequest['agent_name'] ?? null,
+            'model' => $preparedRequest['model'] ?? null,
+            'provider' => $preparedRequest['provider'] ?? null,
+            'payload' => $payloadJson,
+        ]);
+    }
+
+    private function logResponseOutcome(array $preparedRequest, array $result): void
+    {
+        $responseMetrics = $result['response_metrics'] ?? [];
+        $payload = [
+            'run_id' => $preparedRequest['request_metrics']['run_id'] ?? null,
+            'agent_name' => $preparedRequest['agent_name'] ?? null,
+            'model' => $preparedRequest['model'] ?? null,
+            'provider' => $preparedRequest['provider'] ?? null,
+            'duration_ms' => $responseMetrics['duration_ms'] ?? null,
+            'status' => $responseMetrics['status'] ?? null,
+            'http_status' => $responseMetrics['http_status'] ?? null,
+            'response_bytes' => $responseMetrics['response_bytes'] ?? null,
+            'error_class' => $responseMetrics['error_class'] ?? null,
+            'error_message' => $responseMetrics['error_message'] ?? null,
+        ];
+
+        if (($responseMetrics['status'] ?? 'success') === 'success') {
+            Log::info('ai_agent_response_timing', $payload);
+
+            return;
+        }
+
+        Log::warning('ai_agent_provider_error', $payload);
+    }
+
+    private function classifyThrowableStatus(string $message, $reason): string
+    {
+        $haystack = strtolower($message);
+
+        if (strpos($haystack, 'curl error 28') !== false || strpos($haystack, 'timed out') !== false || strpos($haystack, 'timeout') !== false) {
+            return 'timeout';
+        }
+
+        if (strpos($haystack, 'connection') !== false || strpos($haystack, 'could not resolve host') !== false || strpos($haystack, 'failed to connect') !== false) {
+            return 'provider_error';
+        }
+
+        if ($reason instanceof \JsonException) {
+            return 'parse_error';
+        }
+
+        return 'provider_error';
+    }
+
+    private function classifyHttpFailureStatus(?int $httpStatus): string
+    {
+        if ($httpStatus === null) {
+            return 'provider_error';
+        }
+
+        if ($httpStatus === 408 || $httpStatus === 504) {
+            return 'timeout';
+        }
+
+        if ($httpStatus >= 500) {
+            return 'provider_error';
+        }
+
+        return 'provider_error';
+    }
+
+    private function truncateForLog(?string $message): ?string
+    {
+        if ($message === null) {
+            return null;
+        }
+
+        return mb_substr($message, 0, 500);
     }
 
     private function isAssoc(array $array): bool
@@ -727,7 +889,7 @@ class AiAgentClient
             return $content;
         }
 
-        if (!is_string($content)) {
+        if (!is_string($content) || trim($content) === '') {
             return null;
         }
 

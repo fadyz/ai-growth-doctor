@@ -289,7 +289,7 @@ class DecisionScenarioSimulator
         return $result;
     }
 
-    public function run(array $context): array
+    public function run(array $context, array $requestMeta = []): array
     {
         $request = $this->buildRequest($context);
 
@@ -297,7 +297,8 @@ class DecisionScenarioSimulator
             $request['agent'] ?? ($request['agent_name'] ?? 'Decision Scenario Simulator'),
             $request['system_prompt'] ?? ($request['prompt'] ?? ''),
             $request['expected_schema'] ?? ($request['schema'] ?? []),
-            $request['context'] ?? ($request['agent_context'] ?? [])
+            $request['context'] ?? ($request['agent_context'] ?? []),
+            $requestMeta
         );
     }
 }

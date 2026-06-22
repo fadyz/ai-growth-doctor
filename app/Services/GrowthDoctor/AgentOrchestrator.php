@@ -61,6 +61,7 @@ class AgentOrchestrator
         $runId = $trackedRunId ?: $this->makeRunId();
         $isTracked = $trackedRunId !== null;
         $interactionLog = [];
+        $agentRequestMetrics = [];
         $genericSharedContext = ['app_profile', 'generic_metrics_context', 'mapping_validation', 'source_metric_refs', 'source_metrics_context'];
 
         $specialistRequestDefinitions = [
@@ -70,7 +71,7 @@ class AgentOrchestrator
                 'running_note' => 'Activation Agent is analyzing activation bottlenecks.',
                 'done_note' => 'Activation Agent completed.',
                 'shared_context' => array_merge(['checkpoint_meta', 'activation_metrics', 'version_metrics'], $genericSharedContext),
-                'request' => $this->activationAgent->buildRequest($metricsContext),
+                'request' => $this->withRequestMeta($this->activationAgent->buildRequest($metricsContext), $runId, array_merge(['checkpoint_meta', 'activation_metrics', 'version_metrics'], $genericSharedContext)),
             ],
             'ai_retention_agent' => [
                 'label' => 'AI Retention Agent',
@@ -78,7 +79,7 @@ class AgentOrchestrator
                 'running_note' => 'Retention Agent is analyzing D0, D1, and early habit risk.',
                 'done_note' => 'Retention Agent completed.',
                 'shared_context' => array_merge(['checkpoint_meta', 'retention_metrics'], $genericSharedContext),
-                'request' => $this->retentionAgent->buildRequest($metricsContext),
+                'request' => $this->withRequestMeta($this->retentionAgent->buildRequest($metricsContext), $runId, array_merge(['checkpoint_meta', 'retention_metrics'], $genericSharedContext)),
             ],
             'ai_monetization_agent' => [
                 'label' => 'AI Monetization Agent',
@@ -86,7 +87,7 @@ class AgentOrchestrator
                 'running_note' => 'Monetization Agent is analyzing paywall and purchase signal.',
                 'done_note' => 'Monetization Agent completed.',
                 'shared_context' => array_merge(['checkpoint_meta', 'monetization_metrics', 'activation_metrics', 'version_metrics'], $genericSharedContext),
-                'request' => $this->monetizationAgent->buildRequest($metricsContext),
+                'request' => $this->withRequestMeta($this->monetizationAgent->buildRequest($metricsContext), $runId, array_merge(['checkpoint_meta', 'monetization_metrics', 'activation_metrics', 'version_metrics'], $genericSharedContext)),
             ],
             'ai_version_agent' => [
                 'label' => 'AI Version Agent',
@@ -94,7 +95,7 @@ class AgentOrchestrator
                 'running_note' => 'Version Agent is analyzing release and version risk.',
                 'done_note' => 'Version Agent completed.',
                 'shared_context' => array_merge(['checkpoint_meta', 'version_metrics', 'activation_metrics', 'monetization_metrics'], $genericSharedContext),
-                'request' => $this->versionAgent->buildRequest($metricsContext),
+                'request' => $this->withRequestMeta($this->versionAgent->buildRequest($metricsContext), $runId, array_merge(['checkpoint_meta', 'version_metrics', 'activation_metrics', 'monetization_metrics'], $genericSharedContext)),
             ],
             'ai_ads_agent' => [
                 'label' => 'AI Ads Agent',
@@ -102,15 +103,20 @@ class AgentOrchestrator
                 'running_note' => 'Ads Agent is analyzing acquisition cost, campaign lifecycle, and reset campaign context.',
                 'done_note' => 'Ads Agent completed.',
                 'shared_context' => array_merge(['checkpoint_meta', 'ads_metrics', 'activation_metrics', 'retention_metrics', 'rule_based_decision'], $genericSharedContext),
-                'request' => $this->adsAgent->buildRequest($metricsContext),
+                'request' => $this->withRequestMeta($this->adsAgent->buildRequest($metricsContext), $runId, array_merge(['checkpoint_meta', 'ads_metrics', 'activation_metrics', 'retention_metrics', 'rule_based_decision'], $genericSharedContext)),
             ],
             'ai_tomorrow_forecast_agent' => [
                 'label' => 'Tomorrow Forecast Agent',
                 'step_key' => 'tomorrow_forecast_agent',
                 'running_note' => 'Tomorrow Forecast Agent is interpreting quantitative forecast and next-day risk.',
                 'done_note' => 'Tomorrow Forecast Agent completed.',
-                'shared_context' => array_merge(['checkpoint_meta', 'tomorrow_forecast_metrics', 'activation_metrics', 'retention_metrics', 'monetization_metrics'], $genericSharedContext),
-                'request' => $this->tomorrowForecastAgent->buildRequest($metricsContext),
+                'shared_context' => ['checkpoint_meta', 'tomorrow_forecast_metrics', 'forecast_evaluation_summary', 'forecast_calibration_summary', 'activation_compact', 'retention_compact', 'monetization_compact', 'guardrail_compact'],
+                'request' => $this->withRequestMeta(
+                    $this->tomorrowForecastAgent->buildRequest($metricsContext),
+                    $runId,
+                    ['checkpoint_meta', 'tomorrow_forecast_metrics', 'forecast_evaluation_summary', 'forecast_calibration_summary', 'activation_compact', 'retention_compact', 'monetization_compact', 'guardrail_compact'],
+                    ['context_mode' => 'compact']
+                ),
             ],
         ];
 
@@ -133,7 +139,7 @@ class AgentOrchestrator
 
             $specialistAgents = $this->aiAgentClient->callMany(
                 $parallelRequests,
-                function (string $key, array $agentOutput) use (&$interactionLog, &$completedSpecialistKeys, $runId, $isTracked, $specialistRequestDefinitions) {
+                function (string $key, array $agentOutput) use (&$interactionLog, &$completedSpecialistKeys, &$agentRequestMetrics, $runId, $isTracked, $specialistRequestDefinitions, $metricsContext) {
                     if (!isset($specialistRequestDefinitions[$key])) {
                         return;
                     }
@@ -143,6 +149,11 @@ class AgentOrchestrator
                     }
 
                     $definition = $specialistRequestDefinitions[$key];
+                    if ($key === 'ai_tomorrow_forecast_agent') {
+                        $agentOutput = $this->tomorrowForecastAgent->applyDeterministicFallback($agentOutput, $metricsContext);
+                    }
+
+                    $agentRequestMetrics[$key] = $this->extractAgentRequestMetrics($agentOutput);
                     $completedSpecialistKeys[$key] = true;
 
                     $this->markDoneIfTracked($isTracked, $runId, $definition['step_key'], $agentOutput, $definition['done_note']);
@@ -163,8 +174,13 @@ class AgentOrchestrator
                 'error' => 'Parallel specialist result missing.',
             ];
 
+            if ($key === 'ai_tomorrow_forecast_agent') {
+                $agentOutput = $this->tomorrowForecastAgent->applyDeterministicFallback($agentOutput, $metricsContext);
+            }
+
             $agentOutput = $this->normalizeGenericAgentOutput($agentOutput);
             $specialistAgents[$key] = $agentOutput;
+            $agentRequestMetrics[$key] = $this->extractAgentRequestMetrics($agentOutput);
 
             if (!isset($completedSpecialistKeys[$key])) {
                 $completedSpecialistKeys[$key] = true;
@@ -214,6 +230,8 @@ class AgentOrchestrator
                 'source_key' => $key,
                 'status' => $agentOutput['status'] ?? null,
                 'result_status' => $agentOutput['result']['status'] ?? null,
+                'decision_usable' => $agentOutput['decision_usable'] ?? ($agentOutput['result']['decision_usable'] ?? null),
+                'llm_error' => $agentOutput['llm_error'] ?? ($agentOutput['result']['llm_error'] ?? null),
                 'execution_mode' => $agentOutput['execution']['mode'] ?? null,
                 'parallel_pool' => $agentOutput['execution']['parallel_pool'] ?? null,
                 'summary' => $this->extractAgentSummary($agentOutput),
@@ -291,8 +309,12 @@ class AgentOrchestrator
         ]);
         $this->markRunningIfTracked($isTracked, $runId, 'final_decision_agent', 'Final Decision Agent is resolving conflict and producing operating decision.');
         try {
-            $aiDecisionAgent = $this->finalDecisionAgent->run($finalDecisionContext);
+            $aiDecisionAgent = $this->finalDecisionAgent->run($finalDecisionContext, [
+                'run_id' => $runId,
+                'shared_context_keys' => ['metrics_context', 'specialist_agents', 'structured_negotiation', 'conflict_matrix', 'negotiation_summary', 'orchestrator_evidence_assembly', 'evaluations', 'forecast_model_calibration'],
+            ]);
             $aiDecisionAgent = $this->normalizeGenericAgentOutput($aiDecisionAgent);
+            $agentRequestMetrics['ai_final_decision_agent'] = $this->extractAgentRequestMetrics($aiDecisionAgent);
             $this->markDoneIfTracked($isTracked, $runId, 'final_decision_agent', $aiDecisionAgent, 'Final Decision Agent completed.');
         } catch (\Throwable $e) {
             $this->markFailedIfTracked($isTracked, $runId, 'final_decision_agent', $e);
@@ -349,8 +371,12 @@ class AgentOrchestrator
         ]);
         $this->markRunningIfTracked($isTracked, $runId, 'decision_scenario_simulator', 'Decision Scenario Simulator is comparing baseline versus recommended action.');
         try {
-            $decisionScenarioSimulation = $this->decisionScenarioSimulator->run($scenarioSimulationContext);
+            $decisionScenarioSimulation = $this->decisionScenarioSimulator->run($scenarioSimulationContext, [
+                'run_id' => $runId,
+                'shared_context_keys' => ['metrics_context', 'tomorrow_forecast_metrics', 'guardrail_policy', 'final_decision', 'specialist_agents', 'structured_negotiation', 'conflict_matrix', 'evaluations'],
+            ]);
             $decisionScenarioSimulation = $this->normalizeGenericAgentOutput($decisionScenarioSimulation);
+            $agentRequestMetrics['decision_scenario_simulator'] = $this->extractAgentRequestMetrics($decisionScenarioSimulation);
             $this->markDoneIfTracked($isTracked, $runId, 'decision_scenario_simulator', $decisionScenarioSimulation, 'Decision Scenario Simulator completed.');
         } catch (\Throwable $e) {
             $decisionScenarioSimulation = [
@@ -394,6 +420,8 @@ class AgentOrchestrator
             'negotiation_summary' => $structuredNegotiation['summary'] ?? [],
             'orchestrator_evidence_assembly' => $orchestratorEvidenceAssembly,
             'quantitative_baseline_comparison' => $quantitativeBaselineComparison,
+            'agent_request_metrics' => $agentRequestMetrics,
+            'tomorrow_forecast_context_mode' => 'compact',
             'interaction_log' => $interactionLog,
             'workflow' => [
                 'name' => 'AI Growth Doctor Multi-Agent Workflow',
@@ -409,6 +437,16 @@ class AgentOrchestrator
                 'parallelization_note' => 'Specialist agents are independent and run through AiAgentClient::callMany parallel HTTP pool. Structured Negotiation is a deterministic adaptive bounded fan-in layer over specialist summaries only. Final Decision Agent remains sequential because it depends on the complete specialist and negotiation evidence bundle.',
             ],
         ];
+    }
+
+    private function withRequestMeta(array $request, string $runId, array $sharedContextKeys, array $extra = []): array
+    {
+        $request['request_meta'] = array_merge($request['request_meta'] ?? [], $extra, [
+            'run_id' => $runId,
+            'shared_context_keys' => $sharedContextKeys,
+        ]);
+
+        return $request;
     }
 
     private function normalizeGenericAgentOutput(array $agentOutput): array
@@ -530,7 +568,33 @@ class AgentOrchestrator
             'cache_hit' => $agentOutput['cache']['hit'] ?? null,
             'result_status' => $agentOutput['result']['status'] ?? null,
             'summary' => $this->extractAgentSummary($agentOutput),
+            'request_metrics' => $this->extractAgentRequestMetrics($agentOutput),
+            'response_metrics' => $agentOutput['response_metrics'] ?? null,
         ]);
+    }
+
+    private function extractAgentRequestMetrics(array $agentOutput): array
+    {
+        $metrics = $agentOutput['request_metrics'] ?? [];
+        $responseMetrics = $agentOutput['response_metrics'] ?? [];
+
+        return array_filter([
+            'payload_bytes' => $metrics['payload_bytes'] ?? null,
+            'estimated_tokens' => $metrics['estimated_tokens'] ?? null,
+            'message_count' => $metrics['message_count'] ?? null,
+            'timeout_seconds' => $metrics['timeout_seconds'] ?? null,
+            'shared_context_keys' => $metrics['shared_context_keys'] ?? [],
+            'model' => $metrics['model'] ?? ($agentOutput['model'] ?? null),
+            'provider' => $metrics['provider'] ?? ($agentOutput['provider'] ?? null),
+            'endpoint' => $metrics['endpoint'] ?? null,
+            'duration_ms' => $responseMetrics['duration_ms'] ?? null,
+            'status' => $responseMetrics['status'] ?? null,
+            'http_status' => $responseMetrics['http_status'] ?? null,
+            'response_bytes' => $responseMetrics['response_bytes'] ?? null,
+            'context_mode' => $metrics['context_mode'] ?? null,
+        ], function ($value) {
+            return $value !== null && $value !== [];
+        });
     }
 
     private function logInteraction(array &$interactionLog, string $runId, string $from, string $to, string $messageType, array $payload = []): void

@@ -60,6 +60,8 @@
         $aiVersionResult = $aiVersionAgent['result'] ?? [];
         $aiAdsResult = $aiAdsAgent['result'] ?? [];
         $aiTomorrowForecastResult = $aiTomorrowForecastAgent['result'] ?? [];
+        $agentRequestMetrics = $analysis['agent_request_metrics'] ?? [];
+        $showRequestMetrics = config('app.debug') || config('ai_growth_doctor.ai.show_request_metrics', false);
         $tomorrowForecastMetrics = $metrics['tomorrow_forecast_metrics'] ?? [];
         $adsMetrics = $metrics['ads_metrics'] ?? [];
         $guardrailPolicy = $metrics['guardrail_policy'] ?? [];
@@ -374,6 +376,9 @@
         $dashboardRunId = $analysis['meta']['run_id'] ?? null;
         $auditTrace = $analysis['full_audit_trace'] ?? [];
         $auditTraceDownloadUrl = !empty($auditTrace['available']) ? ($auditTrace['download_url'] ?? null) : null;
+        $tomorrowExecution = $aiTomorrowForecastAgent['execution'] ?? [];
+        $tomorrowRequestMetrics = $aiTomorrowForecastAgent['request_metrics'] ?? ($agentRequestMetrics['ai_tomorrow_forecast_agent'] ?? []);
+        $tomorrowResponseMetrics = $aiTomorrowForecastAgent['response_metrics'] ?? [];
     @endphp
 
     <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 overflow-x-hidden">
@@ -508,6 +513,47 @@
                 </div>
             </div>
         </div>
+
+        @if ($showRequestMetrics && !empty($agentRequestMetrics))
+            <div class="bg-white rounded-2xl mb-8 shadow-sm border border-slate-200 overflow-hidden">
+                <div class="px-6 py-4 border-b border-slate-200">
+                    <h2 class="text-lg font-bold">AI Request Size</h2>
+                    <p class="text-sm text-slate-500">Debug-only request sizing and timing for each LLM-backed agent call.</p>
+                </div>
+                <div class="overflow-x-auto">
+                    <table class="min-w-full text-sm">
+                        <thead class="bg-slate-50 text-slate-500">
+                            <tr>
+                                <th class="text-left px-4 py-3">Agent</th>
+                                <th class="text-left px-4 py-3">Model</th>
+                                <th class="text-right px-4 py-3">Payload KB</th>
+                                <th class="text-right px-4 py-3">Estimated Tokens</th>
+                                <th class="text-right px-4 py-3">Timeout</th>
+                                <th class="text-right px-4 py-3">Duration</th>
+                                <th class="text-left px-4 py-3">Status</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-slate-100">
+                            @foreach ($agentRequestMetrics as $agentKey => $requestMetric)
+                                <tr>
+                                    <td class="px-4 py-3 font-medium text-slate-900">{{ strtoupper(str_replace('_', ' ', $agentKey)) }}</td>
+                                    <td class="px-4 py-3 text-slate-600">{{ $requestMetric['model'] ?? '-' }}</td>
+                                    <td class="px-4 py-3 text-right">{{ isset($requestMetric['payload_bytes']) ? number_format(((float) $requestMetric['payload_bytes']) / 1024, 1) : '-' }}</td>
+                                    <td class="px-4 py-3 text-right">{{ $requestMetric['estimated_tokens'] ?? '-' }}</td>
+                                    <td class="px-4 py-3 text-right">{{ $requestMetric['timeout_seconds'] ?? '-' }}s</td>
+                                    <td class="px-4 py-3 text-right">{{ isset($requestMetric['duration_ms']) ? number_format(((float) $requestMetric['duration_ms']) / 1000, 2) . 's' : '-' }}</td>
+                                    <td class="px-4 py-3">
+                                        <span class="inline-flex rounded-full px-2.5 py-1 text-[11px] font-semibold {{ $statusBadgeClass($requestMetric['status'] ?? 'unknown') }}">
+                                            {{ strtoupper(str_replace('_', ' ', $requestMetric['status'] ?? 'unknown')) }}
+                                        </span>
+                                    </td>
+                                </tr>
+                            @endforeach
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        @endif
 
         @if (!empty($operatingDecision))
             <div class="mb-8" x-data="{ openDecision: null }">
@@ -1859,8 +1905,14 @@
                             <div class="text-sm text-slate-500 mb-1 truncate">AI Forecast</div>
                             <div class="text-xl font-bold leading-tight truncate" title="{{ strtoupper($aiTomorrowForecastResult['prediction_status'] ?? ($aiTomorrowForecastAgent['status'] ?? 'unknown')) }}">{{ strtoupper($aiTomorrowForecastResult['prediction_status'] ?? ($aiTomorrowForecastAgent['status'] ?? 'unknown')) }}</div>
                         </div>
-                        <div class="shrink-0 whitespace-nowrap text-xs px-3 py-1 rounded-full {{ ($aiTomorrowForecastAgent['status'] ?? '') === 'active' ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-600' }}">
-                            {{ strtoupper($aiTomorrowForecastAgent['status'] ?? 'unknown') }}
+                        <div class="shrink-0 whitespace-nowrap text-xs px-3 py-1 rounded-full {{
+                            ($aiTomorrowForecastAgent['status'] ?? '') === 'active'
+                                ? 'bg-emerald-100 text-emerald-700'
+                                : (($aiTomorrowForecastAgent['status'] ?? '') === 'fallback'
+                                    ? 'bg-amber-100 text-amber-700'
+                                    : (($aiTomorrowForecastAgent['status'] ?? '') === 'exception' ? 'bg-rose-100 text-rose-700' : 'bg-slate-100 text-slate-600'))
+                        }}">
+                            {{ ($aiTomorrowForecastAgent['status'] ?? '') === 'fallback' ? 'FALLBACK USED' : strtoupper($aiTomorrowForecastAgent['status'] ?? 'unknown') }}
                         </div>
                     </div>
                     <div class="mt-auto pt-2">
@@ -1915,6 +1967,18 @@
                     </div>
                 </div>
 
+                @if (($aiTomorrowForecastAgent['status'] ?? null) === 'fallback')
+                    <div class="bg-amber-50 border border-amber-200 rounded-xl p-4 mb-4 text-sm text-amber-900">
+                        <div class="font-semibold mb-1">Fallback used</div>
+                        <div>LLM narration timed out. Deterministic forecast metrics were used instead.</div>
+                        <div class="mt-2">Attempted model: <strong>{{ $aiTomorrowForecastAgent['model'] ?? '-' }}</strong></div>
+                        <div>Timeout: <strong>{{ $tomorrowRequestMetrics['timeout_seconds'] ?? '-' }}</strong> seconds</div>
+                        @if (!empty($aiTomorrowForecastAgent['llm_error']['message'] ?? null))
+                            <div class="mt-2 text-xs">Provider note: {{ $aiTomorrowForecastAgent['llm_error']['message'] }}</div>
+                        @endif
+                    </div>
+                @endif
+
                 @if (!empty($forecastMeta['evaluation_status']) || !empty($forecastMeta['evaluation_rule']))
                     <div class="bg-amber-50 border border-amber-200 rounded-xl p-4 mb-4 text-sm text-amber-900">
                         <div class="font-semibold mb-1">Evaluation Readiness</div>
@@ -1929,6 +1993,20 @@
                     <div class="bg-blue-50 border border-blue-200 rounded-xl p-4 mb-4 text-sm text-blue-900">
                         <div class="font-semibold mb-1">Executive Summary</div>
                         {{ $aiTomorrowForecastResult['executive_summary'] }}
+                    </div>
+                @endif
+
+                @if (!empty($aiTomorrowForecastResult['risk_flags_used'] ?? []))
+                    <div class="bg-white border border-amber-200 rounded-xl p-4 mb-4">
+                        <div class="font-semibold text-amber-800 mb-2">Risk Flags Used</div>
+                        <div class="grid grid-cols-1 md:grid-cols-3 gap-3 text-sm">
+                            @foreach (($aiTomorrowForecastResult['risk_flags_used'] ?? []) as $flag => $value)
+                                <div class="bg-amber-50 border border-amber-200 rounded-xl px-3 py-2">
+                                    <div class="text-xs text-amber-700 mb-1">{{ strtoupper(str_replace('_', ' ', $flag)) }}</div>
+                                    <div class="font-semibold text-amber-950">{{ $displayValue($value) }}</div>
+                                </div>
+                            @endforeach
+                        </div>
                     </div>
                 @endif
 

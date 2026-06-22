@@ -13,7 +13,7 @@ class FinalDecisionAgent
         $this->client = $client;
     }
 
-    public function run(array $context): array
+    public function run(array $context, array $requestMeta = []): array
     {
         $context = $this->compactContextForFinalDecision($context);
         $language = $this->client->outputLanguage();
@@ -327,7 +327,8 @@ class FinalDecisionAgent
                 ],
                 'competition_pitch' => '1-2 sentence explanation of why this multi-agent system is useful for business decision making',
             ],
-            $context
+            $context,
+            $requestMeta
         );
     }
     private function compactContextForFinalDecision(array $context): array

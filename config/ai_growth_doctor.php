@@ -56,4 +56,16 @@ return [
         'ads.cost_per_conversion' => 'ads_metrics.overall.cost_per_install',
         'ads.conversion_rate' => 'ads_metrics.overall.conversion_rate',
     ],
+
+    'ai' => [
+        'provider' => env('AI_PROVIDER', 'openai'),
+        'output_language' => env('AI_OUTPUT_LANGUAGE', 'English'),
+        'agent_cache_ttl_seconds' => (int) env('AI_AGENT_CACHE_TTL_SECONDS', 1800),
+        'agent_timeout_seconds' => (int) env('AI_AGENT_TIMEOUT_SECONDS', 90),
+        'tomorrow_forecast_timeout_seconds' => (int) env('AI_TOMORROW_FORECAST_TIMEOUT_SECONDS', 45),
+        'tomorrow_forecast_fallback_enabled' => env('AI_TOMORROW_FORECAST_FALLBACK_ENABLED', true),
+        'log_agent_payload_size' => env('AI_LOG_AGENT_PAYLOAD_SIZE', true),
+        'log_agent_payload_body' => env('AI_LOG_AGENT_PAYLOAD_BODY', false),
+        'show_request_metrics' => env('AI_SHOW_REQUEST_METRICS', false),
+    ],
 ];

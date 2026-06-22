@@ -1,20 +1,21 @@
 <?php
 
-
 namespace App\Services\GrowthDoctor\Agents;
 
-use App\Services\GrowthDoctor\Agents\AiAgentClient;
+use App\Services\Ai\TomorrowForecastContextBuilder;
 
 class TomorrowForecastAgent
 {
     private $client;
+    private $contextBuilder;
 
-    public function __construct(AiAgentClient $client)
+    public function __construct(AiAgentClient $client, TomorrowForecastContextBuilder $contextBuilder)
     {
         $this->client = $client;
+        $this->contextBuilder = $contextBuilder;
     }
 
-    public function run(array $metricsContext): array
+    public function run(array $metricsContext, array $requestMeta = []): array
     {
         $noForecastResult = $this->noForecastMetricsResult($metricsContext);
 
@@ -22,24 +23,23 @@ class TomorrowForecastAgent
             return $noForecastResult;
         }
 
-        $request = $this->buildRequest($metricsContext);
-
-        return $this->client->call(
+        $request = $this->buildRequest($metricsContext, $requestMeta);
+        $result = $this->client->call(
             $request['agent_name'],
             $request['system_prompt'],
             $request['expected_schema'],
-            $request['agent_context']
+            $request['agent_context'],
+            $request['request_meta'] ?? []
         );
+
+        return $this->applyDeterministicFallback($result, $metricsContext);
     }
 
-    public function buildRequest(array $metricsContext): array
+    public function buildRequest(array $metricsContext, array $requestMeta = []): array
     {
         $language = $this->client->outputLanguage();
-        $forecastMetrics = $metricsContext['tomorrow_forecast_metrics'] ?? [];
-        $activationMetrics = $metricsContext['activation_metrics'] ?? [];
-        $retentionMetrics = $metricsContext['retention_metrics'] ?? [];
-        $monetizationMetrics = $metricsContext['monetization_metrics'] ?? [];
-        $ruleDecision = $metricsContext['rule_based_decision'] ?? [];
+        $compactContext = $this->contextBuilder->buildCompact($metricsContext);
+        $forecastMetrics = $compactContext['tomorrow_forecast_metrics'] ?? [];
         $forecastEvaluation = $metricsContext['forecast_evaluations'] ?? ($metricsContext['evaluations']['forecast_evaluations'] ?? []);
         $forecastCalibration = $metricsContext['forecast_model_calibration'] ?? ($metricsContext['evaluations']['forecast_model_calibration'] ?? []);
 
@@ -60,7 +60,7 @@ class TomorrowForecastAgent
                     'activation' => ['key metrics copied from provided forecast only'],
                     'retention' => ['key metrics copied from provided forecast only'],
                     'monetization' => ['key metrics copied from provided forecast only'],
-                    'risk_flags' => ['forecast risk flag values copied from provided forecast only']
+                    'risk_flags' => ['forecast risk flag values copied from provided forecast only'],
                 ],
                 'risk_flags' => [
                     'activation_risk' => 'from tomorrow_forecast_metrics.risk_flags or unavailable',
@@ -68,7 +68,7 @@ class TomorrowForecastAgent
                     'retention_risk' => 'from tomorrow_forecast_metrics.risk_flags or unavailable',
                     'habit_risk' => 'from tomorrow_forecast_metrics.risk_flags or unavailable',
                     'monetization_sample' => 'from tomorrow_forecast_metrics.risk_flags or unavailable',
-                    'scaling_caution' => 'from tomorrow_forecast_metrics.risk_flags.scaling_caution or unavailable'
+                    'scaling_caution' => 'from tomorrow_forecast_metrics.risk_flags.scaling_caution or unavailable',
                 ],
                 'guardrail_assessment' => 'deprecated alias only if needed for backward compatibility; do not describe as GuardrailPolicyEngine output',
                 'risk_drivers' => ['specific forecast-driven risk drivers using provided numbers only'],
@@ -81,35 +81,116 @@ class TomorrowForecastAgent
                     'expected_lift' => 'directional only unless provided by input metrics/config',
                     'experiment_duration' => 'duration',
                     'minimum_sample_size' => 'minimum sample',
-                    'rollback_condition' => 'rollback condition'
+                    'rollback_condition' => 'rollback condition',
                 ],
                 'forecast_trust_weighting' => [
                     'evaluation_status' => 'summary from forecast_evaluations if available',
                     'calibration_status' => 'summary from forecast_model_calibration if available',
                     'forecast_role' => 'primary_forecast_caution | supporting_forecast_caution | directional_signal_only | not_available',
-                    'why' => 'why the forecast should receive that weight today'
+                    'why' => 'why the forecast should receive that weight today',
                 ],
                 'evaluation_plan_for_tomorrow' => [
                     'metrics_to_compare' => ['metric names that should be compared against actual tomorrow'],
                     'hit_rule' => 'actual inside low-high range is hit; outside range is miss',
-                    'decision_quality_rule' => 'how tomorrow evaluation should judge this forecast interpretation'
+                    'decision_quality_rule' => 'how tomorrow evaluation should judge this forecast interpretation',
                 ],
-                'limitations' => ['forecast limitations and uncertainty notes']
+                'limitations' => ['forecast limitations and uncertainty notes'],
             ],
             [
-                'checkpoint_meta' => $metricsContext['checkpoint_meta'] ?? [],
+                'checkpoint_meta' => $compactContext['checkpoint_meta'],
                 'tomorrow_forecast_metrics' => $forecastMetrics,
-                'current_activation_metrics' => $activationMetrics,
-                'current_retention_metrics' => $retentionMetrics,
-                'current_monetization_metrics' => $monetizationMetrics,
-                'current_rule_based_decision' => $ruleDecision,
-                'forecast_evaluations' => $forecastEvaluation,
-                'forecast_model_calibration' => $forecastCalibration,
+                'forecast_evaluation_summary' => $compactContext['forecast_evaluation_summary'],
+                'forecast_calibration_summary' => $compactContext['forecast_calibration_summary'],
+                'activation_compact' => $compactContext['activation_compact'],
+                'retention_compact' => $compactContext['retention_compact'],
+                'monetization_compact' => $compactContext['monetization_compact'],
+                'guardrail_compact' => $compactContext['guardrail_compact'],
+                'forecast_evaluations' => [
+                    'status' => $forecastEvaluation['status'] ?? null,
+                    'latest_quality' => $this->extractLatestForecastEvaluationQuality($forecastEvaluation),
+                ],
+                'forecast_model_calibration' => [
+                    'status' => $forecastCalibration['status'] ?? null,
+                    'trust_score' => $forecastCalibration['trust_score']['updated_score'] ?? null,
+                    'trust_interpretation' => $forecastCalibration['trust_score']['interpretation'] ?? null,
+                    'forecast_role' => $forecastCalibration['decision_instruction']['forecast_role'] ?? null,
+                ],
                 'terminology_rule' => 'Use risk_flags/scaling_caution terminology. Do not call forecast risk flags deterministic guardrails or GuardrailPolicyEngine triggers.',
                 'preferred_forecast_risk_flags' => $forecastMetrics['risk_flags'] ?? ($forecastMetrics['guardrails'] ?? []),
-                'strict_numeric_rule' => 'Do not invent, recalculate, or modify forecast numbers. Copy numeric values only from tomorrow_forecast_metrics.'
-            ]
+                'strict_numeric_rule' => 'Do not invent, recalculate, or modify forecast numbers. Copy numeric values only from tomorrow_forecast_metrics.',
+            ],
+            array_merge($requestMeta, [
+                'timeout_seconds' => (int) config('ai_growth_doctor.ai.tomorrow_forecast_timeout_seconds', 45),
+                'context_mode' => 'compact',
+            ])
         );
+    }
+
+    public function applyDeterministicFallback(array $agentOutput, array $metricsContext): array
+    {
+        if (!$this->fallbackEnabled()) {
+            return $agentOutput;
+        }
+
+        if (($agentOutput['status'] ?? null) === 'active') {
+            return $agentOutput;
+        }
+
+        $forecastMetrics = $metricsContext['tomorrow_forecast_metrics'] ?? [];
+
+        if (empty($forecastMetrics) || !$this->shouldFallback($agentOutput)) {
+            return $agentOutput;
+        }
+
+        $riskFlags = $forecastMetrics['risk_flags'] ?? ($forecastMetrics['guardrails'] ?? []);
+        $forecastEvaluation = $metricsContext['forecast_evaluations'] ?? ($metricsContext['evaluations']['forecast_evaluations'] ?? []);
+        $forecastCalibration = $metricsContext['forecast_model_calibration'] ?? ($metricsContext['evaluations']['forecast_model_calibration'] ?? []);
+        $forecastRole = $forecastCalibration['decision_instruction']['forecast_role'] ?? 'not_available';
+        $latestQuality = $this->extractLatestForecastEvaluationQuality($forecastEvaluation) ?? 'not_available';
+        $llmStatus = $agentOutput['response_metrics']['status'] ?? 'unavailable';
+        $llmError = [
+            'type' => $agentOutput['response_metrics']['error_class'] ?? ($agentOutput['status'] ?? 'provider_error'),
+            'message' => mb_substr((string) ($agentOutput['error'] ?? 'Tomorrow Forecast LLM call failed.'), 0, 500),
+        ];
+        $summary = $this->buildFallbackSummary($riskFlags, $forecastRole, $latestQuality);
+
+        $agentOutput['status'] = 'fallback';
+        $agentOutput['result_status'] = 'forecast_interpreted_deterministically';
+        $agentOutput['summary'] = $summary;
+        $agentOutput['result'] = array_merge($agentOutput['result'] ?? [], [
+            'status' => 'forecast_interpreted_deterministically',
+            'prediction_status' => $this->predictionStatusFromRiskFlags($riskFlags),
+            'forecast_for_date' => $forecastMetrics['forecast_for_date'] ?? null,
+            'data_as_of_date' => $forecastMetrics['data_as_of_date'] ?? null,
+            'forecast_engine' => $forecastMetrics['forecast_engine'] ?? null,
+            'executive_summary' => $summary,
+            'summary' => $summary,
+            'main_predicted_risk' => $summary,
+            'decision_impact_today' => $this->fallbackDecisionImpactToday($riskFlags, $forecastRole, $latestQuality),
+            'risk_flags' => $riskFlags,
+            'guardrail_assessment' => $riskFlags,
+            'forecast_trust_weighting' => [
+                'evaluation_status' => $latestQuality,
+                'calibration_status' => $forecastCalibration['status'] ?? null,
+                'forecast_role' => $forecastRole,
+                'why' => 'Fallback summary uses deterministic forecast metrics plus evaluation/calibration weighting because LLM narration was unavailable.',
+            ],
+            'fallback_used' => true,
+            'fallback_reason' => 'Tomorrow Forecast LLM call failed, but deterministic forecast metrics and calibration were available.',
+            'llm_status' => $llmStatus,
+            'llm_error' => $llmError,
+            'decision_usable' => true,
+            'forecast_role' => $forecastRole,
+            'risk_flags_used' => $riskFlags,
+        ]);
+        $agentOutput['llm_status'] = $llmStatus;
+        $agentOutput['llm_error'] = $llmError;
+        $agentOutput['decision_usable'] = true;
+        $agentOutput['fallback_reason'] = 'Tomorrow Forecast LLM call failed, but deterministic forecast metrics and calibration were available.';
+        $agentOutput['forecast_role'] = $forecastRole;
+        $agentOutput['risk_flags_used'] = $riskFlags;
+
+        return $agentOutput;
     }
 
     private function noForecastMetricsResult(array $metricsContext): ?array
@@ -140,261 +221,108 @@ class TomorrowForecastAgent
             ],
         ];
     }
-    private function buildDeterministicForecastResult(
-        array $forecastMetrics,
-        array $activationMetrics,
-        array $retentionMetrics,
-        array $monetizationMetrics,
-        array $ruleDecision
-    ): array {
-        $predictedMetrics = $forecastMetrics['predicted_metrics'] ?? [];
-        $riskFlags = $forecastMetrics['risk_flags'] ?? ($forecastMetrics['guardrails'] ?? []);
-        $forecastForDate = $forecastMetrics['forecast_for_date'] ?? null;
-        $runDate = $forecastMetrics['run_date'] ?? null;
-        $runTimestamp = $forecastMetrics['run_timestamp'] ?? null;
-        $dataAsOfDate = $forecastMetrics['data_as_of_date'] ?? null;
-        $actualDataAvailableUntil = $forecastMetrics['actual_data_available_until'] ?? $dataAsOfDate;
-        $evaluationReadyAfter = $forecastMetrics['evaluation_ready_after'] ?? null;
-        $evaluationStatus = $forecastMetrics['evaluation_status'] ?? 'pending_actual_data';
-        $evaluationRule = $forecastMetrics['evaluation_rule'] ?? 'Evaluate only when actual data for forecast date is available.';
 
-        $activation = $predictedMetrics['activation'] ?? [];
-        $retention = $predictedMetrics['retention'] ?? [];
-        $monetization = $predictedMetrics['monetization'] ?? [];
-
-        $d1 = $retention['d1_logged_rate']['point'] ?? null;
-        $habit = $retention['habit_7d_rate']['point'] ?? null;
-        $foodSession = $activation['food_add_success_rate_from_session']['point'] ?? null;
-        $foodWorkspace = $activation['food_add_success_rate_from_workspace']['point'] ?? null;
-        $purchaseUsers = $monetization['purchase_success_users']['point'] ?? null;
-
-        $riskDrivers = [];
-
-        if ($d1 !== null && $d1 < 15) {
-            $riskDrivers[] = 'Predicted D1 logged rate is below the 15% caution threshold.';
-        }
-
-        if ($habit !== null && $habit < 16) {
-            $riskDrivers[] = 'Predicted 7-day habit remains below the 16% caution threshold.';
-        }
-
-        if ($foodSession !== null && $foodSession < 40) {
-            $riskDrivers[] = 'Predicted food_add_success_rate_from_session is below 40%, indicating early activation risk.';
-        }
-
-        if ($foodWorkspace !== null && $foodWorkspace < 80) {
-            $riskDrivers[] = 'Predicted food_add_success_rate_from_workspace is below 80%, indicating workspace quality needs monitoring.';
-        }
-
-        if ($purchaseUsers !== null && $purchaseUsers < 3) {
-            $riskDrivers[] = 'Predicted purchase_success_users remains small, so tomorrow monetization signal may be noisy.';
-        }
-
-        if (empty($riskDrivers)) {
-            $riskDrivers[] = 'No major forecast risk flag is deteriorating, but the forecast still needs validation tomorrow.';
-        }
-
-        $predictionStatus = $this->predictionStatusFromRiskFlags($riskFlags, $riskDrivers);
-        $confidenceScore = $this->confidenceScoreFromForecast($predictedMetrics);
-        $mainPredictedRisk = $this->mainPredictedRisk($riskFlags, $riskDrivers);
-
-        return [
-            'agent' => 'Tomorrow Forecast Agent',
-            'status' => 'active',
-            'model' => 'deterministic_forecast_v1',
-            'result' => [
-                'prediction_status' => $predictionStatus,
-                'confidence_score' => $confidenceScore,
-                'run_date' => $runDate,
-                'run_timestamp' => $runTimestamp,
-                'data_as_of_date' => $dataAsOfDate,
-                'actual_data_available_until' => $actualDataAvailableUntil,
-                'forecast_for_date' => $forecastForDate,
-                'evaluation_ready_after' => $evaluationReadyAfter,
-                'evaluation_status' => $evaluationStatus,
-                'evaluation_rule' => $evaluationRule,
-                'executive_summary' => $this->executiveSummary($forecastForDate, $predictionStatus, $mainPredictedRisk, $dataAsOfDate, $evaluationReadyAfter),
-                'summary' => $this->executiveSummary($forecastForDate, $predictionStatus, $mainPredictedRisk, $dataAsOfDate, $evaluationReadyAfter),
-                'main_predicted_risk' => $mainPredictedRisk,
-                'decision_impact_today' => $this->decisionImpactToday($riskFlags, $dataAsOfDate, $forecastForDate),
-                'predicted_metrics' => $predictedMetrics,
-                'risk_flags' => $riskFlags,
-                'guardrail_assessment' => $riskFlags,
-                'risk_drivers' => $riskDrivers,
-                'recommended_preventive_action' => $this->recommendedPreventiveAction($riskFlags),
-                'evaluation_plan_for_tomorrow' => [
-                    'metrics_to_compare' => [
-                        'session_users',
-                        'workspace_users',
-                        'food_add_success_users',
-                        'food_add_success_rate_from_session',
-                        'food_add_success_rate_from_workspace',
-                        'd0_logged_rate',
-                        'd1_logged_rate',
-                        'habit_7d_rate',
-                        'paywall_view_users',
-                        'purchase_success_users',
-                    ],
-                    'forecast_for_date' => $forecastForDate,
-                    'data_as_of_date' => $dataAsOfDate,
-                    'evaluation_ready_after' => $evaluationReadyAfter,
-                    'evaluation_status' => $evaluationStatus,
-                    'hit_rule' => 'Actuals for forecast_for_date are considered a hit when they fall between the low and high range for the related metric.',
-                    'readiness_rule' => $evaluationRule,
-                    'decision_quality_rule' => 'If the predicted main risk actually occurs once actual_data_available_until >= forecast_for_date, the forecast caution is considered valid. If actuals fall outside the range on the main metric, lower forecast confidence and correct the decision rule.',
-                ],
-                'limitations' => [
-                    'Forecast V1 uses historical data up to data_as_of_date, not real-time data from the run day.',
-                    'Forecast V1 uses weighted historical trend and does not yet include seasonality, campaign changes, or intraday signals.',
-                    'Purchase forecast can be noisy because purchase samples are usually small.',
-                    'Forecast is a deterministic baseline and risk caution, not a deterministic GuardrailPolicyEngine trigger or a guaranteed outcome.',
-                ],
-            ],
-            'cache' => [
-                'hit' => false,
-                'key' => null,
-                'ttl_seconds' => null,
-            ],
-        ];
+    private function fallbackEnabled(): bool
+    {
+        return (bool) config('ai_growth_doctor.ai.tomorrow_forecast_fallback_enabled', true);
     }
 
-    private function predictionStatusFromRiskFlags(array $riskFlags, array $riskDrivers): string
+    private function shouldFallback(array $agentOutput): bool
+    {
+        $status = $agentOutput['status'] ?? null;
+        $responseStatus = $agentOutput['response_metrics']['status'] ?? null;
+        $httpStatus = (int) ($agentOutput['response_metrics']['http_status'] ?? 0);
+
+        if (in_array($status, ['exception', 'invalid_json'], true)) {
+            return true;
+        }
+
+        if (in_array($responseStatus, ['timeout', 'provider_error', 'parse_error', 'unavailable'], true)) {
+            return true;
+        }
+
+        if ($status === 'error' && $httpStatus >= 500) {
+            return true;
+        }
+
+        if ($status === 'error' && empty($agentOutput['error'])) {
+            return true;
+        }
+
+        return false;
+    }
+
+    private function buildFallbackSummary(array $riskFlags, string $forecastRole, string $latestQuality): string
+    {
+        $parts = [];
+
+        $watchAreas = [];
+        if (($riskFlags['activation_risk'] ?? null) === 'watch') {
+            $watchAreas[] = 'activation';
+        }
+        if (($riskFlags['retention_risk'] ?? null) === 'watch') {
+            $watchAreas[] = 'retention';
+        }
+        if (($riskFlags['habit_risk'] ?? null) === 'watch') {
+            $watchAreas[] = 'habit';
+        }
+
+        if (!empty($watchAreas)) {
+            $parts[] = 'Forecast flags ' . implode(', ', $watchAreas) . ' as watch areas.';
+        }
+
+        if (($riskFlags['monetization_sample'] ?? null) === 'low_sample') {
+            $parts[] = 'Monetization remains low-sample.';
+        }
+
+        if ($forecastRole === 'can_strengthen_guardrail') {
+            $parts[] = 'Forecast calibration indicates this signal can strengthen guardrail interpretation.';
+        } elseif ($forecastRole === 'supporting_guardrail') {
+            $parts[] = 'Use forecast as supporting guardrail evidence, not a deterministic decision owner.';
+        }
+
+        if (in_array($latestQuality, ['poor', 'partially_correct'], true)) {
+            $parts[] = 'Recent forecast quality is ' . $latestQuality . ', so verify against mature actuals.';
+        }
+
+        if (($riskFlags['scaling_caution'] ?? null) === 'allow_cautious_test') {
+            $parts[] = 'Scaling should remain cautious and limited to controlled tests.';
+        }
+
+        if (empty($parts)) {
+            $parts[] = 'Deterministic forecast metrics are available and should be treated as directional caution until mature actuals arrive.';
+        }
+
+        return implode(' ', $parts);
+    }
+
+    private function fallbackDecisionImpactToday(array $riskFlags, string $forecastRole, string $latestQuality): string
+    {
+        return $this->buildFallbackSummary($riskFlags, $forecastRole, $latestQuality);
+    }
+
+    private function extractLatestForecastEvaluationQuality(array $forecastEvaluation): ?string
+    {
+        $evaluated = $forecastEvaluation['evaluated'] ?? [];
+        $latest = !empty($evaluated) ? end($evaluated) : [];
+
+        return $latest['summary']['forecast_quality'] ?? ($forecastEvaluation['latest_evaluation']['summary']['forecast_quality'] ?? null);
+    }
+
+    private function predictionStatusFromRiskFlags(array $riskFlags): string
     {
         if (in_array(($riskFlags['scaling_caution'] ?? ($riskFlags['scaling_guardrail'] ?? null)), ['block_aggressive_scaling', 'block_scaling'], true)) {
             return 'warning';
         }
 
-        if (($riskFlags['retention_risk'] ?? null) === 'at_risk' || ($riskFlags['habit_risk'] ?? null) === 'at_risk') {
+        if (($riskFlags['retention_risk'] ?? null) === 'at_risk' || ($riskFlags['habit_risk'] ?? null) === 'at_risk' || ($riskFlags['activation_risk'] ?? null) === 'at_risk') {
             return 'warning';
         }
 
-        if (($riskFlags['activation_risk'] ?? null) === 'at_risk') {
-            return 'warning';
-        }
-
-        if (count($riskDrivers) > 1) {
+        if (($riskFlags['activation_risk'] ?? null) === 'watch' || ($riskFlags['retention_risk'] ?? null) === 'watch' || ($riskFlags['habit_risk'] ?? null) === 'watch') {
             return 'watch';
         }
 
         return 'healthy';
-    }
-
-    private function confidenceScoreFromForecast(array $predictedMetrics): int
-    {
-        $confidences = [];
-
-        foreach ($predictedMetrics as $group) {
-            if (!is_array($group)) {
-                continue;
-            }
-
-            foreach ($group as $metric) {
-                if (!is_array($metric)) {
-                    continue;
-                }
-
-                $confidence = $metric['confidence'] ?? null;
-
-                if ($confidence === 'medium_high') {
-                    $confidences[] = 80;
-                } elseif ($confidence === 'medium') {
-                    $confidences[] = 68;
-                } elseif ($confidence === 'medium_low') {
-                    $confidences[] = 55;
-                } elseif ($confidence === 'low') {
-                    $confidences[] = 40;
-                }
-            }
-        }
-
-        if (empty($confidences)) {
-            return 50;
-        }
-
-        return (int) round(array_sum($confidences) / count($confidences));
-    }
-
-    private function mainPredictedRisk(array $riskFlags, array $riskDrivers): string
-    {
-        if (($riskFlags['retention_risk'] ?? null) === 'at_risk') {
-            return 'D1 retention is predicted to remain at_risk.';
-        }
-
-        if (($riskFlags['habit_risk'] ?? null) === 'at_risk') {
-            return '7-day habit is predicted to remain weak.';
-        }
-
-        if (($riskFlags['activation_risk'] ?? null) === 'at_risk') {
-            return 'Early activation is predicted to remain weak from session to food_add_success.';
-        }
-
-        if (($riskFlags['monetization_sample'] ?? null) === 'low_sample') {
-            return 'Tomorrow monetization signal is predicted to remain low-sample.';
-        }
-
-        return $riskDrivers[0] ?? 'No dominant main risk stands out.';
-    }
-
-    private function executiveSummary(?string $forecastForDate, string $predictionStatus, string $mainPredictedRisk, ?string $dataAsOfDate = null, ?string $evaluationReadyAfter = null): string
-    {
-        $dateText = $forecastForDate ?: 'the next forecast date';
-        $dataText = $dataAsOfDate ?: 'the latest available data';
-        $evaluationText = $evaluationReadyAfter ?: 'after actual data for the forecast date is available';
-
-        return 'Forecast for ' . $dateText . ' was generated from data through ' . $dataText . ' with status ' . strtoupper($predictionStatus) . '. Main risk: ' . $mainPredictedRisk . ' Evaluation can start ' . $evaluationText . '.';
-    }
-
-    private function decisionImpactToday(array $riskFlags, ?string $dataAsOfDate = null, ?string $forecastForDate = null): string
-    {
-        $context = 'This forecast is based on data through ' . ($dataAsOfDate ?: 'the latest available data') . ' and predicts ' . ($forecastForDate ?: 'the next forecast date') . '. ';
-
-        if (in_array(($riskFlags['scaling_caution'] ?? ($riskFlags['scaling_guardrail'] ?? null)), ['block_aggressive_scaling', 'block_scaling'], true)) {
-            return $context . 'The forecast gives a risk caution to avoid aggressive scaling and focus on activation/retention recovery.';
-        }
-
-        return $context . 'The forecast does not caution against small experiments, but actuals should still be evaluated once forecast-date data is available.';
-    }
-
-    private function recommendedPreventiveAction(array $riskFlags): array
-    {
-        if (($riskFlags['retention_risk'] ?? null) === 'at_risk' || ($riskFlags['habit_risk'] ?? null) === 'at_risk') {
-            return [
-                'action' => 'Run D1 habit rescue nudge',
-                'target_user_segment' => 'New users who completed food_add_success on D0 but have not logged again within 20-24 hours.',
-                'trigger_condition' => 'D0_logged = true AND no_log_next_day_by_18:00',
-                'success_metric' => 'D1 logged rate',
-                'stop_loss_metric' => 'notification opt-out or app_remove',
-                'expected_lift' => '+10-15% relative D1 logged rate',
-                'experiment_duration' => '7 days',
-                'minimum_sample_size' => '500 eligible users or 7 days, whichever comes first',
-                'rollback_condition' => 'No D1 uplift after minimum sample or opt-out increases by more than 2 points.',
-            ];
-        }
-
-        if (($riskFlags['activation_risk'] ?? null) === 'at_risk') {
-            return [
-                'action' => 'Run first-food-log rescue experiment',
-                'target_user_segment' => 'New users who reached session/home but did not complete food_add_success within 2 hours.',
-                'trigger_condition' => 'session_started = true AND food_add_success = false after 2 hours',
-                'success_metric' => 'food_add_success_rate_from_session',
-                'stop_loss_metric' => 'app_remove or session drop',
-                'expected_lift' => '+5 absolute points in food_add_success_rate_from_session',
-                'experiment_duration' => '7 days',
-                'minimum_sample_size' => '500 new users',
-                'rollback_condition' => 'food_add_success_rate_from_workspace drops below 80% or there is no uplift after the minimum sample.',
-            ];
-        }
-
-        return [
-            'action' => 'Monitor forecast risk flags without aggressive scaling',
-            'target_user_segment' => 'All new users in next-day cohort',
-            'trigger_condition' => 'Daily forecast run completed',
-            'success_metric' => 'Forecast hit rate and risk flag stability',
-            'stop_loss_metric' => 'D1 logged rate or food_add_success_rate_from_session worsening',
-            'expected_lift' => 'Maintain stable activation and retention',
-            'experiment_duration' => '24 hours',
-            'minimum_sample_size' => '1 daily cohort',
-            'rollback_condition' => 'Forecast miss on main risk or risk flag worsens materially.',
-        ];
     }
 }
