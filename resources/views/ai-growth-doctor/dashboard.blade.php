@@ -1144,7 +1144,7 @@
                                     <div class="text-xs font-semibold uppercase tracking-[0.16em] text-violet-700">Learning & Risk Adjustments</div>
                                     <div class="text-sm text-violet-900 mt-1">Deterministic guardrail, ads acquisition, forecast, evaluation, calibration memory, and the risk if the decision is wrong.</div>
                                     <div class="text-xs text-violet-700 mt-2">
-                                        Preview: policy {{ strtoupper(str_replace('_', ' ', $deterministicGuardrailBasis['winning_guardrail'] ?? ($guardrailPolicy['winning_guardrail'] ?? '-'))) }} · ads {{ strtoupper(str_replace('_', ' ', $adsDecisionImpact['ads_verdict'] ?? ($aiAdsResult['ads_verdict'] ?? ($adsMetrics['ads_verdict']['decision'] ?? '-')))) }} · trust {{ $forecastCalibrationTrustScore !== null ? $forecastCalibrationTrustScore . '/100' : '-' }}
+                                        Preview: policy {{ strtoupper(str_replace('_', ' ', $displayShortValue($deterministicGuardrailBasis['winning_guardrail'] ?? ($guardrailPolicy['winning_guardrail'] ?? '-')))) }} · ads {{ strtoupper(str_replace('_', ' ', $displayShortValue($adsDecisionImpact['ads_verdict'] ?? ($aiAdsResult['ads_verdict'] ?? ($adsMetrics['ads_verdict']['decision'] ?? '-'))))) }} · trust {{ $forecastCalibrationTrustScore !== null ? $forecastCalibrationTrustScore . '/100' : '-' }}
                                     </div>
                                 </div>
                                 <div class="shrink-0 text-xs font-semibold text-violet-700" x-text="showLearning ? 'Hide' : 'Show'"></div>
@@ -1165,26 +1165,26 @@
                                     </p>
                                 </div>
                                 <span class="shrink-0 inline-flex w-fit rounded-full px-3 py-1 text-[11px] font-semibold bg-white text-slate-700 ring-1 ring-slate-200">
-                                    {{ strtoupper(str_replace('_', ' ', $deterministicGuardrailBasis['policy_type'] ?? ($guardrailPolicy['policy_type'] ?? 'guardrail_policy'))) }}
+                                    {{ strtoupper(str_replace('_', ' ', $displayShortValue($deterministicGuardrailBasis['policy_type'] ?? ($guardrailPolicy['policy_type'] ?? 'guardrail_policy')))) }}
                                 </span>
                             </div>
 
                             <div class="grid grid-cols-1 md:grid-cols-4 gap-3 text-sm mb-4">
                                 <div class="bg-white border border-slate-200 rounded-xl p-3 text-slate-950">
                                     <div class="text-xs font-semibold text-slate-500 mb-1">Policy Version</div>
-                                    {{ $deterministicGuardrailBasis['policy_version'] ?? ($guardrailPolicy['policy_version'] ?? '-') }}
+                                    {{ $displayValue($deterministicGuardrailBasis['policy_version'] ?? ($guardrailPolicy['policy_version'] ?? '-')) }}
                                 </div>
                                 <div class="bg-white border border-slate-200 rounded-xl p-3 text-slate-950">
                                     <div class="text-xs font-semibold text-slate-500 mb-1">Winning Guardrail</div>
-                                    {{ strtoupper(str_replace('_', ' ', $deterministicGuardrailBasis['winning_guardrail'] ?? ($guardrailPolicy['winning_guardrail'] ?? '-'))) }}
+                                    {{ strtoupper(str_replace('_', ' ', $displayShortValue($deterministicGuardrailBasis['winning_guardrail'] ?? ($guardrailPolicy['winning_guardrail'] ?? '-')))) }}
                                 </div>
                                 <div class="bg-white border border-slate-200 rounded-xl p-3 text-slate-950">
                                     <div class="text-xs font-semibold text-slate-500 mb-1">Blocked Decision</div>
-                                    {{ strtoupper(str_replace('_', ' ', $deterministicGuardrailBasis['blocked_decision'] ?? ($guardrailDeterministicDecision['blocked_decision'] ?? '-'))) }}
+                                    {{ strtoupper(str_replace('_', ' ', $displayShortValue($deterministicGuardrailBasis['blocked_decision'] ?? ($guardrailDeterministicDecision['blocked_decision'] ?? '-')))) }}
                                 </div>
                                 <div class="bg-white border border-slate-200 rounded-xl p-3 text-slate-950">
                                     <div class="text-xs font-semibold text-slate-500 mb-1">Allowed Decision</div>
-                                    {{ strtoupper(str_replace('_', ' ', $deterministicGuardrailBasis['allowed_decision'] ?? ($guardrailDeterministicDecision['allowed_decision'] ?? '-'))) }}
+                                    {{ strtoupper(str_replace('_', ' ', $displayShortValue($deterministicGuardrailBasis['allowed_decision'] ?? ($guardrailDeterministicDecision['allowed_decision'] ?? '-')))) }}
                                 </div>
                             </div>
 
@@ -1261,7 +1261,7 @@
                             @endif
 
                             <div class="mt-3 text-xs text-slate-500">
-                                {{ $guardrailPolicy['reproducibility_note'] ?? 'Same input and policy version should produce the same deterministic guardrail decision.' }}
+                                {{ $displayValue($guardrailPolicy['reproducibility_note'] ?? 'Same input and policy version should produce the same deterministic guardrail decision.') }}
                             </div>
                         </div>
                     @endif
@@ -1277,18 +1277,18 @@
                                     </p>
                                 </div>
                                 <span class="shrink-0 inline-flex w-fit rounded-full px-3 py-1 text-[11px] font-semibold bg-white text-sky-700 ring-1 ring-sky-200">
-                                    {{ strtoupper(str_replace('_', ' ', $adsDecisionImpact['ads_verdict'] ?? ($aiAdsResult['ads_verdict'] ?? ($adsMetrics['ads_verdict']['decision'] ?? 'ads')))) }}
+                                    {{ strtoupper(str_replace('_', ' ', $displayShortValue($adsDecisionImpact['ads_verdict'] ?? ($aiAdsResult['ads_verdict'] ?? ($adsMetrics['ads_verdict']['decision'] ?? 'ads'))))) }}
                                 </span>
                             </div>
 
                             <div class="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
                                 <div class="bg-white/80 border border-sky-200 rounded-xl p-3 text-sky-950">
                                     <div class="text-xs font-semibold text-sky-700 mb-1">Campaign Health</div>
-                                    {{ strtoupper(str_replace('_', ' ', $adsDecisionImpact['campaign_health'] ?? ($aiAdsResult['campaign_health'] ?? '-'))) }}
+                                    {{ strtoupper(str_replace('_', ' ', $displayShortValue($adsDecisionImpact['campaign_health'] ?? ($aiAdsResult['campaign_health'] ?? '-')))) }}
                                 </div>
                                 <div class="bg-white/80 border border-sky-200 rounded-xl p-3 text-sky-950">
                                     <div class="text-xs font-semibold text-sky-700 mb-1">Budget Decision</div>
-                                    {{ strtoupper(str_replace('_', ' ', $adsDecisionImpact['budget_decision'] ?? ($aiAdsResult['budget_decision']['decision'] ?? '-'))) }}
+                                    {{ strtoupper(str_replace('_', ' ', $displayShortValue($adsDecisionImpact['budget_decision'] ?? ($aiAdsResult['budget_decision']['decision'] ?? '-')))) }}
                                 </div>
                                 <div class="bg-white/80 border border-sky-200 rounded-xl p-3 text-sky-950">
                                     <div class="text-xs font-semibold text-sky-700 mb-1">Legacy Campaign</div>
@@ -1314,8 +1314,8 @@
                                     <div class="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm text-sky-950">
                                         @foreach (($aiAdsResult['campaign_observations'] ?? []) as $observation)
                                             <div class="border border-sky-100 rounded-xl p-3 bg-white">
-                                                <div class="font-semibold">{{ $observation['campaign'] ?? '-' }}</div>
-                                                <div class="text-xs mt-1">Lifecycle: {{ strtoupper(str_replace('_', ' ', $observation['lifecycle_status'] ?? '-')) }}</div>
+                                                <div class="font-semibold">{{ $displayShortValue($observation['campaign'] ?? '-') }}</div>
+                                                <div class="text-xs mt-1">Lifecycle: {{ strtoupper(str_replace('_', ' ', $displayShortValue($observation['lifecycle_status'] ?? '-'))) }}</div>
                                                 <div class="text-xs mt-1">Signal: {{ $displayValue($observation['performance_signal'] ?? '-') }}</div>
                                                 <div class="text-xs mt-1">Risk: {{ $displayValue($observation['risk'] ?? '-') }}</div>
                                                 <div class="text-xs mt-1">Recommendation: {{ $displayValue($observation['recommendation'] ?? '-') }}</div>
@@ -2073,7 +2073,7 @@
                         <div class="font-semibold text-amber-800 mb-2">Risk Drivers</div>
                         <ul class="list-disc ml-5 space-y-1 text-sm text-amber-900">
                             @foreach ($renderList($aiTomorrowForecastResult['risk_drivers'] ?? []) as $risk)
-                                <li>{{ $risk }}</li>
+                                <li class="whitespace-pre-wrap">{{ $displayValue($risk) }}</li>
                             @endforeach
                         </ul>
                     </div>
@@ -2111,7 +2111,7 @@
                     <div class="font-semibold mb-1">Metric Facts</div>
                     <ul class="list-disc ml-5 text-sm text-slate-700 space-y-1 mb-4">
                         @foreach ($renderList($aiActivationResult['metric_facts'] ?? []) as $fact)
-                            <li>{{ $fact }}</li>
+                            <li class="whitespace-pre-wrap">{{ $displayValue($fact) }}</li>
                         @endforeach
                     </ul>
                 @endif
@@ -2150,7 +2150,7 @@
                     <div class="font-semibold mb-1">Metric Facts</div>
                     <ul class="list-disc ml-5 text-sm text-slate-700 space-y-1 mb-4">
                         @foreach ($renderList($aiRetentionResult['metric_facts'] ?? []) as $fact)
-                            <li>{{ $fact }}</li>
+                            <li class="whitespace-pre-wrap">{{ $displayValue($fact) }}</li>
                         @endforeach
                     </ul>
                 @endif
@@ -2187,7 +2187,7 @@
                     <div class="font-semibold mb-1">Opportunities</div>
                     <ul class="list-disc ml-5 text-sm text-slate-700 space-y-1 mb-4">
                         @foreach ($renderList($aiMonetizationResult['opportunities'] ?? []) as $item)
-                            <li>{{ $item }}</li>
+                            <li class="whitespace-pre-wrap">{{ $displayValue($item) }}</li>
                         @endforeach
                     </ul>
                 @endif
@@ -2232,7 +2232,7 @@
                     <div class="font-semibold mb-1">Release Risks</div>
                     <ul class="list-disc ml-5 text-sm text-slate-700 space-y-1">
                         @foreach ($renderList($aiVersionResult['release_risks'] ?? []) as $risk)
-                            <li>{{ $risk }}</li>
+                            <li class="whitespace-pre-wrap">{{ $displayValue($risk) }}</li>
                         @endforeach
                     </ul>
                 @endif
@@ -2620,7 +2620,7 @@
                                     <div class="font-semibold text-slate-900 mb-2">Limitations</div>
                                     <ul class="list-disc pl-5 space-y-1">
                                         @foreach (($quantitativeBaselineComparison['limitations'] ?? ['This is a heuristic audit comparison, not causal proof.', 'A separate LLM rerun baseline can be added later.']) as $limitation)
-                                            <li>{{ $limitation }}</li>
+                                            <li class="whitespace-pre-wrap">{{ $displayValue($limitation) }}</li>
                                         @endforeach
                                     </ul>
                                 </div>
@@ -2727,7 +2727,7 @@
                                 <div class="text-sm text-slate-500 mb-2">Root Cause Hypothesis</div>
                                 <ul class="list-disc ml-5 space-y-1 text-slate-700">
                                     @foreach (($aiResult['root_cause_hypothesis'] ?? []) as $hypothesis)
-                                        <li>{{ $hypothesis }}</li>
+                                        <li class="whitespace-pre-wrap">{{ $displayValue($hypothesis) }}</li>
                                     @endforeach
                                 </ul>
                             </div>
@@ -2738,7 +2738,7 @@
                                 <div class="font-semibold text-slate-800 mb-2">Agent Conflicts</div>
                                 <ul class="list-disc ml-5 space-y-1 text-slate-700 text-sm">
                                     @foreach (($aiResult['agent_conflicts'] ?? []) as $conflict)
-                                        <li>{{ $conflict }}</li>
+                                        <li class="whitespace-pre-wrap">{{ $displayValue($conflict) }}</li>
                                     @endforeach
                                 </ul>
                             </div>
@@ -2749,7 +2749,7 @@
                                 <div class="font-semibold text-orange-800 mb-2">Weak Evidence / Uncertainty</div>
                                 <ul class="list-disc ml-5 space-y-1 text-orange-900 text-sm">
                                     @foreach (($aiResult['weak_evidence_or_uncertainty'] ?? []) as $uncertainty)
-                                        <li>{{ $uncertainty }}</li>
+                                        <li class="whitespace-pre-wrap">{{ $displayValue($uncertainty) }}</li>
                                     @endforeach
                                 </ul>
                             </div>
@@ -2760,7 +2760,7 @@
                                 <div class="font-semibold text-amber-800 mb-2">Risk Notes</div>
                                 <ul class="list-disc ml-5 space-y-1 text-amber-900 text-sm">
                                     @foreach (($aiResult['risk_notes'] ?? []) as $risk)
-                                        <li>{{ $risk }}</li>
+                                        <li class="whitespace-pre-wrap">{{ $displayValue($risk) }}</li>
                                     @endforeach
                                 </ul>
                             </div>
@@ -2855,7 +2855,7 @@
                                 @if (!empty($objectiveEvaluation['secondary_metrics']))
                                     <ul class="list-disc ml-5 space-y-1 text-blue-900 text-sm mb-2">
                                         @foreach (($objectiveEvaluation['secondary_metrics'] ?? []) as $metric)
-                                            <li>{{ $metric }}</li>
+                                            <li class="whitespace-pre-wrap">{{ $displayValue($metric) }}</li>
                                         @endforeach
                                     </ul>
                                 @endif
