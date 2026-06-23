@@ -172,8 +172,14 @@ class AiAgentClient
         array $agentContext,
         array $requestMeta = []
     ): array {
-        $systemPrompt = trim($systemPrompt . "\n\n" . $this->genericGrowthContractInstruction());
-        $expectedSchema = $this->addGenericOutputFields($expectedSchema);
+        if (empty($requestMeta['skip_generic_output_fields'])) {
+            $systemPrompt = trim($systemPrompt . "\n\n" . $this->genericGrowthContractInstruction());
+        } else {
+            $systemPrompt = trim($systemPrompt);
+        }
+        if (empty($requestMeta['skip_generic_output_fields'])) {
+            $expectedSchema = $this->addGenericOutputFields($expectedSchema);
+        }
         $provider = $this->provider();
         $apiKey = $this->apiKey();
         $model = $this->model();

@@ -30,6 +30,7 @@ class AgentOrchestrator
     private $structuredNegotiationService;
     private $baselineComparisonService;
     private $finalDecisionContextBuilder;
+    private $finalDecisionEnrichmentService;
 
     public function __construct(
         ActivationAgent $activationAgent,
@@ -44,7 +45,8 @@ class AgentOrchestrator
         RunProgressStore $runProgressStore,
         StructuredNegotiationService $structuredNegotiationService,
         AgentSocietyBaselineComparisonService $baselineComparisonService,
-        FinalDecisionContextBuilder $finalDecisionContextBuilder
+        FinalDecisionContextBuilder $finalDecisionContextBuilder,
+        FinalDecisionEnrichmentService $finalDecisionEnrichmentService
     ) {
         $this->activationAgent = $activationAgent;
         $this->retentionAgent = $retentionAgent;
@@ -59,6 +61,7 @@ class AgentOrchestrator
         $this->structuredNegotiationService = $structuredNegotiationService;
         $this->baselineComparisonService = $baselineComparisonService;
         $this->finalDecisionContextBuilder = $finalDecisionContextBuilder;
+        $this->finalDecisionEnrichmentService = $finalDecisionEnrichmentService;
     }
 
     public function run(array $metricsContext, ?string $trackedRunId = null): array
@@ -295,6 +298,9 @@ class AgentOrchestrator
         $contextMode = (string) config('ai_growth_doctor.ai.final_decision_context_mode', 'compact');
         $maxPayloadKb = (int) config('ai_growth_doctor.ai.final_decision_max_payload_kb', 120);
         $maxPayloadBytes = max(1, $maxPayloadKb) * 1024;
+        $finalDecisionTimeoutSeconds = (int) config('ai_growth_doctor.ai.final_decision_timeout_seconds', 60);
+        $finalDecisionRepairTimeoutSeconds = (int) config('ai_growth_doctor.ai.final_decision_repair_timeout_seconds', 30);
+        $finalDecisionRetryEnabled = (bool) config('ai_growth_doctor.ai.final_decision_retry_enabled', true);
         $compactFinalDecisionContext = $this->finalDecisionContextBuilder->buildCompact(
             $metricsContext,
             $specialistAgents,
@@ -335,6 +341,15 @@ class AgentOrchestrator
             'compact_context_payload_bytes' => $compactPayloadBytes,
         ];
 
+        if ($compactPayloadBytes > 45 * 1024) {
+            Log::warning('final_decision_prompt_still_too_large', [
+                'run_id' => $runId,
+                'compact_payload_kb' => round($compactPayloadBytes / 1024, 1),
+                'target_payload_kb' => 45,
+                'context_mode' => $contextMode,
+            ]);
+        }
+
         $this->logInteraction($interactionLog, $runId, 'orchestrator', 'AI Final Decision Agent', 'agent_request', [
             'shared_context' => [
                 'final_decision_compact_context',
@@ -364,49 +379,57 @@ class AgentOrchestrator
                     'compact_baseline_comparison',
                 ],
                 'context_mode' => $contextMode,
-                'timeout_seconds' => (int) config('ai_growth_doctor.ai.final_decision_timeout_seconds', 90),
+                'timeout_seconds' => $finalDecisionTimeoutSeconds,
             ]);
             $aiDecisionAgent = $this->normalizeGenericAgentOutput($aiDecisionAgent);
 
             if (!$this->isFinalDecisionUsable($aiDecisionAgent)) {
                 $firstAttempt = $aiDecisionAgent;
+                $missingRequiredFields = $this->missingFinalDecisionFields($firstAttempt);
                 $this->logInteraction($interactionLog, $runId, 'AI Final Decision Agent', 'orchestrator', 'schema_validation_failed', [
                     'status' => $firstAttempt['status'] ?? null,
                     'response_status' => $firstAttempt['response_metrics']['status'] ?? null,
-                    'missing_required_fields' => $this->missingFinalDecisionFields($firstAttempt),
+                    'missing_required_fields' => $missingRequiredFields,
                     'raw_response' => $firstAttempt['raw_response'] ?? null,
                     'raw_response_type' => $firstAttempt['raw_response_type'] ?? null,
                 ]);
 
-                $repairAttempt = $this->finalDecisionAgent->run($finalDecisionContext, [
-                    'run_id' => $runId,
-                    'shared_context_keys' => [
-                        'final_decision_compact_context',
-                        'compact_core_metrics',
-                        'compact_specialist_summaries',
-                        'compact_structured_negotiation',
-                        'compact_guardrail_policy',
-                        'compact_forecast_evaluation',
-                        'compact_baseline_comparison',
-                    ],
-                    'context_mode' => $contextMode,
-                    'timeout_seconds' => (int) config('ai_growth_doctor.ai.final_decision_timeout_seconds', 90),
-                    'json_repair_attempt' => true,
-                ]);
-                $repairAttempt = $this->normalizeGenericAgentOutput($repairAttempt);
+                if ($finalDecisionRetryEnabled && $this->shouldRepairFinalDecision($firstAttempt)) {
+                    $repairAttempt = $this->finalDecisionAgent->run($finalDecisionContext, [
+                        'run_id' => $runId,
+                        'shared_context_keys' => [
+                            'invalid_raw_response',
+                            'missing_required_fields',
+                            'compact_core_schema',
+                        ],
+                        'context_mode' => 'json_repair_only',
+                        'timeout_seconds' => $finalDecisionRepairTimeoutSeconds,
+                        'json_repair_attempt' => true,
+                        'invalid_status' => $firstAttempt['status'] ?? null,
+                        'invalid_response_status' => $firstAttempt['response_metrics']['status'] ?? null,
+                        'invalid_raw_response' => $firstAttempt['raw_response'] ?? null,
+                        'invalid_raw_response_type' => $firstAttempt['raw_response_type'] ?? null,
+                        'missing_required_fields' => $missingRequiredFields,
+                    ]);
+                    $repairAttempt = $this->normalizeGenericAgentOutput($repairAttempt);
 
-                if ($this->isFinalDecisionUsable($repairAttempt)) {
-                    $repairAttempt['final_decision_repair'] = [
-                        'used' => true,
-                        'reason' => 'initial_final_decision_schema_invalid',
-                        'initial_status' => $firstAttempt['status'] ?? null,
-                        'initial_response_status' => $firstAttempt['response_metrics']['status'] ?? null,
-                    ];
-                    $aiDecisionAgent = $repairAttempt;
+                    if ($this->isFinalDecisionUsable($repairAttempt)) {
+                        $repairAttempt['final_decision_repair'] = [
+                            'used' => true,
+                            'reason' => 'initial_final_decision_schema_invalid',
+                            'initial_status' => $firstAttempt['status'] ?? null,
+                            'initial_response_status' => $firstAttempt['response_metrics']['status'] ?? null,
+                        ];
+                        $aiDecisionAgent = $repairAttempt;
+                    } else {
+                        $aiDecisionAgent = $this->buildFinalDecisionFallback($repairAttempt, $compactFinalDecisionContext, [$firstAttempt, $repairAttempt]);
+                    }
                 } else {
-                    $aiDecisionAgent = $this->buildFinalDecisionFallback($repairAttempt, $compactFinalDecisionContext, [$firstAttempt, $repairAttempt]);
+                    $aiDecisionAgent = $this->buildFinalDecisionFallback($firstAttempt, $compactFinalDecisionContext, [$firstAttempt]);
                 }
             }
+
+            $aiDecisionAgent = $this->enrichFinalDecisionAgent($aiDecisionAgent, $compactFinalDecisionContext);
 
             $agentRequestMetrics['ai_final_decision_agent'] = $this->extractAgentRequestMetrics($aiDecisionAgent);
             $this->markDoneIfTracked($isTracked, $runId, 'final_decision_agent', $aiDecisionAgent, 'Final Decision Agent completed.');
@@ -742,6 +765,37 @@ class AgentOrchestrator
         $result = $agentOutput['result'] ?? $agentOutput;
 
         return is_array($result) ? $result : [];
+    }
+
+    private function shouldRepairFinalDecision(array $agentOutput): bool
+    {
+        $responseStatus = $agentOutput['response_metrics']['status'] ?? null;
+        $rawResponse = $agentOutput['raw_response'] ?? null;
+
+        if ($responseStatus === 'timeout' && ($rawResponse === null || $rawResponse === '')) {
+            return false;
+        }
+
+        return $rawResponse !== null || !empty($this->finalDecisionResult($agentOutput));
+    }
+
+    private function enrichFinalDecisionAgent(array $agentOutput, array $compactContext): array
+    {
+        $result = $this->finalDecisionResult($agentOutput);
+
+        if (!$this->isFinalDecisionUsable($agentOutput)) {
+            $agentOutput = $this->buildFinalDecisionFallback($agentOutput, $compactContext, [$agentOutput]);
+            $result = $this->finalDecisionResult($agentOutput);
+        }
+
+        $agentOutput['result'] = $this->finalDecisionEnrichmentService->enrich($result, $compactContext, [
+            'fallback_used' => ($agentOutput['status'] ?? null) === 'fallback',
+            'final_decision_repair_used' => (bool) ($agentOutput['final_decision_repair']['used'] ?? false),
+            'original_status' => $agentOutput['status'] ?? null,
+            'invalid_attempts' => $result['invalid_attempts'] ?? [],
+        ]);
+
+        return $agentOutput;
     }
 
     private function buildFinalDecisionFallback(array $failedAgent, array $compactContext, array $invalidAttempts = []): array
