@@ -367,9 +367,47 @@ class AgentOrchestrator
                 'timeout_seconds' => (int) config('ai_growth_doctor.ai.final_decision_timeout_seconds', 90),
             ]);
             $aiDecisionAgent = $this->normalizeGenericAgentOutput($aiDecisionAgent);
-            if (($aiDecisionAgent['response_metrics']['status'] ?? null) === 'timeout') {
-                $aiDecisionAgent = $this->buildFinalDecisionFallback($aiDecisionAgent, $compactFinalDecisionContext);
+
+            if (!$this->isFinalDecisionUsable($aiDecisionAgent)) {
+                $firstAttempt = $aiDecisionAgent;
+                $this->logInteraction($interactionLog, $runId, 'AI Final Decision Agent', 'orchestrator', 'schema_validation_failed', [
+                    'status' => $firstAttempt['status'] ?? null,
+                    'response_status' => $firstAttempt['response_metrics']['status'] ?? null,
+                    'missing_required_fields' => $this->missingFinalDecisionFields($firstAttempt),
+                    'raw_response' => $firstAttempt['raw_response'] ?? null,
+                    'raw_response_type' => $firstAttempt['raw_response_type'] ?? null,
+                ]);
+
+                $repairAttempt = $this->finalDecisionAgent->run($finalDecisionContext, [
+                    'run_id' => $runId,
+                    'shared_context_keys' => [
+                        'final_decision_compact_context',
+                        'compact_core_metrics',
+                        'compact_specialist_summaries',
+                        'compact_structured_negotiation',
+                        'compact_guardrail_policy',
+                        'compact_forecast_evaluation',
+                        'compact_baseline_comparison',
+                    ],
+                    'context_mode' => $contextMode,
+                    'timeout_seconds' => (int) config('ai_growth_doctor.ai.final_decision_timeout_seconds', 90),
+                    'json_repair_attempt' => true,
+                ]);
+                $repairAttempt = $this->normalizeGenericAgentOutput($repairAttempt);
+
+                if ($this->isFinalDecisionUsable($repairAttempt)) {
+                    $repairAttempt['final_decision_repair'] = [
+                        'used' => true,
+                        'reason' => 'initial_final_decision_schema_invalid',
+                        'initial_status' => $firstAttempt['status'] ?? null,
+                        'initial_response_status' => $firstAttempt['response_metrics']['status'] ?? null,
+                    ];
+                    $aiDecisionAgent = $repairAttempt;
+                } else {
+                    $aiDecisionAgent = $this->buildFinalDecisionFallback($repairAttempt, $compactFinalDecisionContext, [$firstAttempt, $repairAttempt]);
+                }
             }
+
             $agentRequestMetrics['ai_final_decision_agent'] = $this->extractAgentRequestMetrics($aiDecisionAgent);
             $this->markDoneIfTracked($isTracked, $runId, 'final_decision_agent', $aiDecisionAgent, 'Final Decision Agent completed.');
         } catch (\Throwable $e) {
@@ -400,6 +438,10 @@ class AgentOrchestrator
             'headline' => $quantitativeBaselineComparison['headline'] ?? null,
             'delta' => $quantitativeBaselineComparison['delta'] ?? [],
         ]);
+
+        if (!$this->isFinalDecisionUsable($aiDecisionAgent)) {
+            $aiDecisionAgent = $this->buildFinalDecisionFallback($aiDecisionAgent, $compactFinalDecisionContext, [$aiDecisionAgent]);
+        }
 
         $scenarioSimulationContext = [
             'metrics_context' => $metricsContext,
@@ -653,7 +695,56 @@ class AgentOrchestrator
         });
     }
 
-    private function buildFinalDecisionFallback(array $failedAgent, array $compactContext): array
+    private function isFinalDecisionUsable(array $agentOutput): bool
+    {
+        if (in_array($agentOutput['status'] ?? null, ['invalid_json', 'exception', 'error'], true)) {
+            return false;
+        }
+
+        return empty($this->missingFinalDecisionFields($agentOutput));
+    }
+
+    private function missingFinalDecisionFields(array $agentOutput): array
+    {
+        $result = $this->finalDecisionResult($agentOutput);
+
+        if (empty($result)) {
+            return [
+                'business_verdict',
+                'today_operator_summary',
+                'main_diagnosis',
+                'action_plan_or_prioritized_actions',
+                'operating_decision_or_agent_society_operating_verdict',
+            ];
+        }
+
+        $missing = [];
+
+        foreach (['business_verdict', 'today_operator_summary', 'main_diagnosis'] as $field) {
+            if (empty($result[$field])) {
+                $missing[] = $field;
+            }
+        }
+
+        if (empty($result['action_plan']) && empty($result['prioritized_actions'])) {
+            $missing[] = 'action_plan_or_prioritized_actions';
+        }
+
+        if (empty($result['operating_decision']) && empty($result['agent_society_operating_verdict'])) {
+            $missing[] = 'operating_decision_or_agent_society_operating_verdict';
+        }
+
+        return $missing;
+    }
+
+    private function finalDecisionResult(array $agentOutput): array
+    {
+        $result = $agentOutput['result'] ?? $agentOutput;
+
+        return is_array($result) ? $result : [];
+    }
+
+    private function buildFinalDecisionFallback(array $failedAgent, array $compactContext, array $invalidAttempts = []): array
     {
         $guardrail = $compactContext['guardrail_policy'] ?? [];
         $coreMetrics = $compactContext['core_metrics'] ?? [];
@@ -668,6 +759,7 @@ class AgentOrchestrator
             'status' => 'fallback',
             'result_status' => 'deterministic_final_decision_fallback',
             'business_verdict' => $businessVerdict,
+            'business_status' => 'Final Decision fallback used',
             'deterministic_guardrail_verdict' => $businessVerdict,
             'agent_society_operating_verdict' => $guardrail['allowed_decision'] ?? 'HOLD_AND_OPTIMIZE',
             'operating_decision_summary' => 'Use deterministic guardrails and compact specialist summaries while the Final Decision LLM is unavailable.',
@@ -678,6 +770,52 @@ class AgentOrchestrator
                 'improve_day_1_reentry',
                 'guarded_reset_campaign_test',
                 'value_gated_paywall',
+            ],
+            'prioritized_actions' => [
+                [
+                    'priority' => 1,
+                    'action' => 'fix_session_to_workspace_onboarding',
+                    'owner_area' => 'product',
+                    'expected_impact' => 'high',
+                    'why' => 'Activation and specialist summaries remain sufficient for a deterministic fallback.',
+                    'success_metric' => 'workspace_users',
+                    'success_target' => 'increase directionally before scaling',
+                ],
+                [
+                    'priority' => 2,
+                    'action' => 'improve_day_1_reentry',
+                    'owner_area' => 'product',
+                    'expected_impact' => 'high',
+                    'why' => 'Retention risk should be repaired before aggressive acquisition or monetization pressure.',
+                    'success_metric' => 'd1_logged_rate',
+                    'success_target' => 'increase directionally after cohort matures',
+                ],
+            ],
+            'operational_action_plan' => [
+                [
+                    'action' => 'fix_session_to_workspace_onboarding',
+                    'target_user_segment' => 'new and returning users entering the app session',
+                    'trigger_condition' => 'session starts before workspace/core action success',
+                    'success_metric' => 'workspace_users',
+                    'stop_loss_metric' => 'd1_logged_rate',
+                    'expected_lift' => 'directional improvement',
+                    'experiment_duration' => '7 days',
+                    'minimum_sample_size' => 'use next checkpoint sample',
+                    'rollback_condition' => 'workspace entry or D1 retention worsens',
+                    'owner_area' => 'product',
+                ],
+                [
+                    'action' => 'guarded_reset_campaign_test',
+                    'target_user_segment' => 'paid acquisition cohorts with downstream activation monitoring',
+                    'trigger_condition' => 'ads reset campaign remains within deterministic safety boundary',
+                    'success_metric' => 'cost_per_install and workspace_users',
+                    'stop_loss_metric' => 'activation and retention quality',
+                    'expected_lift' => 'controlled acquisition learning',
+                    'experiment_duration' => '7 days',
+                    'minimum_sample_size' => 'do not judge before enough conversions',
+                    'rollback_condition' => 'CPI worsens or activation quality drops',
+                    'owner_area' => 'ads',
+                ],
             ],
             'operating_decision' => [
                 'ads_decision' => [
@@ -700,14 +838,34 @@ class AgentOrchestrator
             'structured_negotiation_summary' => $structuredNegotiation,
             'specialist_summaries' => $specialists,
             'llm_error' => [
-                'type' => 'timeout',
+                'type' => ($failedAgent['response_metrics']['status'] ?? null) === 'timeout' ? 'timeout' : 'schema_failure',
                 'message' => substr($errorMessage, 0, 500),
             ],
+            'invalid_attempts' => $this->compactInvalidFinalDecisionAttempts($invalidAttempts),
             'decision_usable' => true,
-            'fallback_reason' => 'Final Decision LLM timed out, but deterministic guardrail, specialist summaries, and structured negotiation were available.',
+            'fallback_reason' => 'Final Decision LLM returned invalid or incomplete JSON, but deterministic guardrail, specialist summaries, and structured negotiation were available.',
         ];
 
         return $failedAgent;
+    }
+
+    private function compactInvalidFinalDecisionAttempts(array $attempts): array
+    {
+        return array_map(function ($attempt) {
+            if (!is_array($attempt)) {
+                return [];
+            }
+
+            return [
+                'status' => $attempt['status'] ?? null,
+                'response_status' => $attempt['response_metrics']['status'] ?? null,
+                'http_status' => $attempt['response_metrics']['http_status'] ?? null,
+                'response_bytes' => $attempt['response_metrics']['response_bytes'] ?? null,
+                'raw_response' => $attempt['raw_response'] ?? null,
+                'raw_response_type' => $attempt['raw_response_type'] ?? null,
+                'missing_required_fields' => $this->missingFinalDecisionFields($attempt),
+            ];
+        }, $attempts);
     }
 
     private function fallbackMainDiagnosis(array $coreMetrics, array $specialists): string

@@ -2678,6 +2678,13 @@
                 </div>
 
                 @if (!empty($aiResult))
+                    @if (($aiDecision['status'] ?? null) === 'fallback' || !empty($aiResult['fallback_reason']))
+                        <div class="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                            <div class="font-semibold">Final Decision fallback used</div>
+                            <div class="mt-1 whitespace-pre-wrap">{{ $displayValue($aiResult['fallback_reason'] ?? 'Deterministic fallback was used because the Final Decision LLM response was invalid or incomplete.') }}</div>
+                        </div>
+                    @endif
+
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
                         <div>
                             <div class="text-sm text-slate-500 mb-1">Business Status</div>
