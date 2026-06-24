@@ -470,7 +470,7 @@
                 <div id="asyncRunResultActions" class="hidden mt-5 bg-emerald-50 border border-emerald-200 rounded-xl p-4">
                     <div class="font-semibold text-emerald-900 mb-1">Run completed</div>
                     <p class="text-sm text-emerald-800 mb-3">All agents completed. Refresh the dashboard to load the latest result from this run.</p>
-                    <button type="button" data-show-loading="true" onclick="window.location.href='?no_auto=1'" class="inline-flex items-center rounded-full bg-emerald-700 text-white px-4 py-2 text-sm font-semibold hover:bg-emerald-800 transition">
+                    <button type="button" data-show-loading="true" onclick="window.location.reload()" class="inline-flex items-center rounded-full bg-emerald-700 text-white px-4 py-2 text-sm font-semibold hover:bg-emerald-800 transition">
                         Load Result Into Dashboard
                     </button>
                 </div>
@@ -2979,7 +2979,6 @@
 
     <script>
         const chartData = @json($charts);
-        const shouldAutoStartAsync = @json($autoStartAsync ?? false);
 
         const asyncStepSections = [
             {
@@ -3309,12 +3308,6 @@
             const button = document.getElementById('startAsyncRunButton');
             if (button) {
                 button.addEventListener('click', startAsyncAgentRun);
-            }
-
-            if (shouldAutoStartAsync) {
-                setTimeout(function () {
-                    startAsyncAgentRun();
-                }, 250);
             }
         });
 

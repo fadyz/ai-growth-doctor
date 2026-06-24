@@ -62,7 +62,7 @@ return [
         'output_language' => env('AI_OUTPUT_LANGUAGE', 'English'),
         'agent_cache_ttl_seconds' => (int) env('AI_AGENT_CACHE_TTL_SECONDS', 1800),
         'agent_timeout_seconds' => (int) env('AI_AGENT_TIMEOUT_SECONDS', 90),
-        'tomorrow_forecast_timeout_seconds' => (int) env('AI_TOMORROW_FORECAST_TIMEOUT_SECONDS', 45),
+        'tomorrow_forecast_timeout_seconds' => (int) env('AI_TOMORROW_FORECAST_TIMEOUT_SECONDS', 90),
         'tomorrow_forecast_fallback_enabled' => env('AI_TOMORROW_FORECAST_FALLBACK_ENABLED', true),
         'final_decision_context_mode' => env('AI_FINAL_DECISION_CONTEXT_MODE', 'compact'),
         'final_decision_max_payload_kb' => (int) env('AI_FINAL_DECISION_MAX_PAYLOAD_KB', 35),

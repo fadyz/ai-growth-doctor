@@ -73,7 +73,7 @@ class AiGrowthDoctorController extends Controller
 
         return view('ai-growth-doctor.dashboard', [
             'analysis' => $analysis,
-            'autoStartAsync' => !$request->boolean('no_auto'),
+            'autoStartAsync' => false,
             'hasCachedAnalysis' => $latestAnalysis !== null,
         ]);
     }

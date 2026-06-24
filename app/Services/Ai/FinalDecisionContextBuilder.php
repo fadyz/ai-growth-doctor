@@ -75,6 +75,8 @@ class FinalDecisionContextBuilder
             'food_add_success_users' => $metrics['food_add_success_users'] ?? null,
             'food_add_success_rate_from_session' => $metrics['food_add_success_rate_from_session'] ?? null,
             'food_add_success_rate_from_workspace' => $metrics['food_add_success_rate_from_workspace'] ?? null,
+            'paywall_rate_from_food_add_success' => $metrics['paywall_rate_from_food_add_success'] ?? null,
+            'purchase_success_rate_from_paywall' => $metrics['purchase_success_rate_from_paywall'] ?? null,
             'diagnosis' => $metricsContext['activation_metrics']['diagnosis'] ?? null,
         ];
     }
@@ -100,6 +102,7 @@ class FinalDecisionContextBuilder
             'paywall_view_users' => $metrics['paywall_view_users'] ?? null,
             'purchase_start_users' => $metrics['purchase_start_users'] ?? null,
             'purchase_success_users' => $metrics['purchase_success_users'] ?? null,
+            'paywall_rate_from_food_add_success' => $metrics['paywall_rate_from_food_add_success'] ?? null,
             'purchase_success_rate_from_paywall' => $metrics['purchase_success_rate_from_paywall'] ?? null,
             'diagnosis' => $metricsContext['monetization_metrics']['diagnosis'] ?? null,
         ];
