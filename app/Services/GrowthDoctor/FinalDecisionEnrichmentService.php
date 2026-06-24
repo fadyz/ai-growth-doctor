@@ -13,6 +13,11 @@ class FinalDecisionEnrichmentService
         $coreMetrics = $compactContext['core_metrics'] ?? [];
 
         $decision = $this->normalizeCore($coreDecision, $guardrail);
+        $decision['operating_decision'] = $this->normalizeOperatingDecision(
+            $decision['operating_decision'] ?? [],
+            $decision,
+            $coreMetrics
+        );
 
         $decision['business_status'] = $fallbackMeta['fallback_used'] ?? false
             ? 'Final Decision fallback used'
@@ -64,48 +69,78 @@ class FinalDecisionEnrichmentService
         $decision['weak_evidence_or_uncertainty'] = $this->limitList($decision['weak_evidence_or_uncertainty'] ?? [], 4);
         $decision['confidence_score'] = (int) ($decision['confidence_score'] ?? 55);
         $decision['rationale'] = $decision['rationale'] ?? $decision['main_diagnosis'];
-        $decision['operating_decision'] = $this->normalizeOperatingDecision($decision['operating_decision'] ?? []);
+        $decision['operating_decision'] = is_array($decision['operating_decision'] ?? null) ? $decision['operating_decision'] : [];
         $decision['decision_usable'] = true;
 
         return $decision;
     }
 
-    private function normalizeOperatingDecision(array $operatingDecision): array
+    private function normalizeOperatingDecision(array $operatingDecision, array $decision, array $coreMetrics): array
     {
-        return array_merge([
+        $defaults = [
             'ads_decision' => [
                 'decision' => 'hold_budget',
                 'label' => 'Hold Budget',
-                'confidence_score' => 55,
+                'confidence_score' => $this->decisionConfidenceDefault('ads_decision', 'hold_budget', $coreMetrics),
                 'reason' => 'Keep acquisition guarded until downstream quality is confirmed.',
                 'next_action' => 'Monitor CPI, conversions, activation, and retention before increasing spend.',
-                'guardrail_metric' => 'activation and retention quality',
+                'guardrail_metric' => 'D1 logged rate / CPI / conversion volume',
             ],
             'release_decision' => [
                 'decision' => 'continue_with_monitoring',
-                'label' => 'Monitor Release',
-                'confidence_score' => 55,
+                'label' => 'Continue With Monitoring',
+                'confidence_score' => $this->decisionConfidenceDefault('release_decision', 'continue_with_monitoring', $coreMetrics),
                 'reason' => 'No deterministic release rollback signal is available in the compact decision.',
                 'next_action' => 'Continue guarded rollout monitoring.',
-                'guardrail_metric' => 'activation and retention by version',
+                'guardrail_metric' => 'version conversion stability',
             ],
             'product_decision' => [
-                'decision' => 'prioritize_activation',
-                'label' => 'Prioritize Activation',
-                'confidence_score' => 60,
-                'reason' => 'Activation and early retention are the safest optimization focus.',
-                'next_action' => 'Improve session-to-workspace and first-value flow.',
-                'success_metric' => 'workspace_users',
+                'decision' => $this->defaultProductDecision($decision),
+                'label' => $this->decisionLabel($this->defaultProductDecision($decision)),
+                'confidence_score' => $this->decisionConfidenceDefault('product_decision', $this->defaultProductDecision($decision), $coreMetrics),
+                'reason' => $this->defaultProductReason($decision),
+                'next_action' => $this->defaultProductNextAction($decision),
+                'success_metric' => $this->defaultProductMetric($decision),
             ],
             'monetization_decision' => [
                 'decision' => 'keep_current',
-                'label' => 'Keep Paywall Guarded',
-                'confidence_score' => 55,
+                'label' => 'Keep Current',
+                'confidence_score' => $this->decisionConfidenceDefault('monetization_decision', 'keep_current', $coreMetrics),
                 'reason' => 'Avoid adding paywall pressure until activation/retention quality is stronger.',
                 'next_action' => 'Use segment-only monetization tests if needed.',
-                'guardrail_metric' => 'activation and retention quality',
+                'guardrail_metric' => 'purchase_success_rate_from_paywall / purchase sample size',
             ],
-        ], $operatingDecision);
+        ];
+
+        $normalized = [];
+
+        foreach ($defaults as $key => $cardDefaults) {
+            $card = is_array($operatingDecision[$key] ?? null) ? $operatingDecision[$key] : [];
+            $decisionKey = (string) ($card['decision'] ?? $cardDefaults['decision']);
+            $normalized[$key] = array_merge($cardDefaults, $card);
+            $normalized[$key]['decision'] = $decisionKey;
+            $normalized[$key]['label'] = trim((string) ($normalized[$key]['label'] ?? '')) !== ''
+                ? $normalized[$key]['label']
+                : $this->decisionLabel($decisionKey);
+            $normalized[$key]['confidence_score'] = $this->clampScore(
+                $normalized[$key]['confidence_score'] ?? $this->decisionConfidenceDefault($key, $decisionKey, $coreMetrics)
+            );
+
+            if ($key === 'product_decision') {
+                $normalized[$key]['success_metric'] = trim((string) ($normalized[$key]['success_metric'] ?? '')) !== ''
+                    ? $normalized[$key]['success_metric']
+                    : $this->defaultProductMetric($decision);
+            } else {
+                $metricField = $key === 'release_decision' || $key === 'ads_decision' || $key === 'monetization_decision'
+                    ? 'guardrail_metric'
+                    : 'success_metric';
+                $normalized[$key][$metricField] = trim((string) ($normalized[$key][$metricField] ?? '')) !== ''
+                    ? $normalized[$key][$metricField]
+                    : $cardDefaults[$metricField];
+            }
+        }
+
+        return $normalized;
     }
 
     private function normalizePrioritizedActions(array $actions): array
@@ -319,35 +354,102 @@ class FinalDecisionEnrichmentService
 
     private function growthHealthScore(array $decision, array $coreMetrics): array
     {
-        $confidence = max(0, min(100, (int) ($decision['confidence_score'] ?? 55)));
-        $overall = $decision['business_verdict'] === 'SCALE_CAREFULLY' ? max(60, $confidence) : min(70, $confidence);
+        $activation = $coreMetrics['activation'] ?? [];
+        $retention = $coreMetrics['retention'] ?? [];
+        $monetization = $coreMetrics['monetization'] ?? [];
+        $version = $coreMetrics['version'] ?? [];
+
+        $activationScore = $this->clampScore(round(
+            $this->weightedPercentScore($activation['food_add_success_rate_from_session'] ?? null, 60, 70)
+            + $this->weightedPercentScore($activation['food_add_success_rate_from_workspace'] ?? null, 90, 30)
+        ));
+
+        $retentionScore = $this->clampScore(round(
+            $this->weightedPercentScore($retention['d1_logged_rate'] ?? null, 35, 55)
+            + $this->weightedPercentScore($retention['habit_7d_rate'] ?? null, 35, 35)
+            + $this->weightedPercentScore($retention['avg_log_days_7d'] ?? null, 2.5, 10)
+        ));
+
+        $monetizationScore = $this->clampScore(round(
+            $this->weightedPercentScore($monetization['purchase_success_rate_from_paywall'] ?? null, 8, 50)
+            + $this->weightedPercentScore($activation['paywall_rate_from_food_add_success'] ?? null, 25, 25)
+            + $this->weightedPercentScore(min(30, (float) ($monetization['purchase_success_users'] ?? 0)), 30, 25)
+        ));
+
+        $releaseScore = $this->releaseScore($version);
+        $overall = $this->clampScore(round(
+            ($activationScore * 0.30)
+            + ($retentionScore * 0.35)
+            + ($monetizationScore * 0.20)
+            + ($releaseScore * 0.15)
+        ));
+
+        $scores = [
+            'activation' => $activationScore,
+            'retention' => $retentionScore,
+            'monetization' => $monetizationScore,
+            'release' => $releaseScore,
+        ];
 
         return [
             'overall_score' => $overall,
-            'activation_score' => $this->metricScore($coreMetrics['activation']['workspace_users'] ?? null),
-            'retention_score' => $this->metricScore($coreMetrics['retention']['d1_logged_rate'] ?? null),
-            'monetization_score' => $this->metricScore($coreMetrics['monetization']['purchase_success_rate_from_paywall'] ?? null),
-            'release_score' => 55,
-            'main_constraint' => 'activation',
-            'score_explanation' => 'Deterministic score derived from core metrics and final decision confidence.',
+            'activation_score' => $activationScore,
+            'retention_score' => $retentionScore,
+            'monetization_score' => $monetizationScore,
+            'release_score' => $releaseScore,
+            'main_constraint' => $this->mainConstraint($decision, $scores),
+            'score_explanation' => 'Deterministic score derived from session-to-core-action activation, mature retention, monetization signal quality, and release stability.',
         ];
     }
 
     private function businessImpactEstimate(array $decision, array $coreMetrics): array
     {
-        return [
-            'main_metric_at_risk' => $decision['operating_decision']['product_decision']['success_metric'] ?? 'workspace_users',
+        $activation = $coreMetrics['activation'] ?? [];
+        $monetization = $coreMetrics['monetization'] ?? [];
+        $requiredInputs = [
+            $activation['session_users'] ?? null,
+            $activation['workspace_users'] ?? null,
+            $activation['food_add_success_rate_from_workspace'] ?? null,
+            $activation['paywall_rate_from_food_add_success'] ?? null,
+            $monetization['purchase_success_rate_from_paywall'] ?? null,
+        ];
+        $canCalculate = $this->allNumeric($requiredInputs);
+
+        $uplift = [
+            'assumption' => 'Directional estimate based on improving session-to-workspace conversion by 5 percentage points; no statistical significance claimed.',
+            'extra_workspace_users_7d' => null,
+            'extra_food_add_success_users_7d' => null,
+            'extra_paywall_eligible_users_7d' => null,
+            'revenue_direction' => 'positive',
+        ];
+
+        if ($canCalculate) {
+            $sessionUsers = (float) $activation['session_users'];
+            $workspaceUsers = (float) $activation['workspace_users'];
+            $currentWorkspaceRate = $sessionUsers > 0 ? ($workspaceUsers / $sessionUsers) : 0.0;
+            $targetWorkspaceRate = min($currentWorkspaceRate + 0.05, 0.60);
+            $extraWorkspaceUsers = max(0, (int) round(($sessionUsers * $targetWorkspaceRate) - $workspaceUsers));
+            $extraFoodAddUsers = (int) round($extraWorkspaceUsers * ((float) $activation['food_add_success_rate_from_workspace'] / 100));
+            $extraPaywallUsers = (int) round($extraFoodAddUsers * ((float) $activation['paywall_rate_from_food_add_success'] / 100));
+
+            $uplift['extra_workspace_users_7d'] = $extraWorkspaceUsers;
+            $uplift['extra_food_add_success_users_7d'] = $extraFoodAddUsers;
+            $uplift['extra_paywall_eligible_users_7d'] = $extraPaywallUsers;
+        }
+
+        $impact = [
+            'main_metric_at_risk' => $this->mainMetricAtRisk($decision),
             'growth_blocker' => $decision['main_diagnosis'] ?? 'guarded optimization required',
             'revenue_risk' => $decision['business_verdict'] === 'ROLLBACK_RISK' ? 'high' : 'medium',
             'efficiency_impact' => 'Guarded prioritization prevents wasted spend and premature monetization pressure.',
-            'estimated_uplift_if_fixed' => [
-                'assumption' => 'Directional estimate only; no statistical significance claimed.',
-                'extra_workspace_users_7d' => null,
-                'extra_food_add_success_users_7d' => null,
-                'extra_paywall_eligible_users_7d' => null,
-                'revenue_direction' => 'positive',
-            ],
+            'estimated_uplift_if_fixed' => $uplift,
         ];
+
+        if (!$canCalculate) {
+            $impact['calculation_status'] = 'missing_input';
+        }
+
+        return $impact;
     }
 
     private function objectiveEvaluationPlan(array $decision): array
@@ -409,6 +511,188 @@ class FinalDecisionEnrichmentService
         }
 
         return (int) max(0, min(100, round($numeric)));
+    }
+
+    private function weightedPercentScore($value, float $target, float $weight): float
+    {
+        $numeric = $this->number($value);
+        if ($numeric === null || $target <= 0) {
+            return 0.0;
+        }
+
+        return min(1, max(0, $numeric / $target)) * $weight;
+    }
+
+    private function mainConstraint(array $decision, array $scores): string
+    {
+        asort($scores);
+        $constraint = (string) key($scores);
+        $topPriority = strtolower((string) ($decision['top_priority'] ?? ''));
+
+        if (strpos($topPriority, 'retention') !== false) {
+            $activationScore = $scores['activation'] ?? 0;
+            $retentionScore = $scores['retention'] ?? 0;
+            if (($activationScore - $retentionScore) < 10) {
+                $constraint = 'retention';
+            }
+        }
+
+        if ($constraint === 'activation' && ($scores['activation'] ?? 0) >= 70) {
+            foreach ($scores as $name => $score) {
+                if ($name !== 'activation') {
+                    $constraint = (string) $name;
+                    break;
+                }
+            }
+        }
+
+        return $constraint;
+    }
+
+    private function releaseScore(array $version): int
+    {
+        $topVersions = is_array($version['top_versions'] ?? null) ? $version['top_versions'] : [];
+        $relevantVersions = array_values(array_filter($topVersions, function ($row) {
+            return (float) ($row['session_users'] ?? 0) > 0;
+        }));
+
+        $stableTopVersions = !empty($relevantVersions);
+        foreach ($relevantVersions as $row) {
+            $sessionRate = $this->number($row['food_add_success_rate_from_session'] ?? null);
+            if ($sessionRate !== null && $sessionRate < 30) {
+                $stableTopVersions = false;
+                break;
+            }
+        }
+
+        $score = $stableTopVersions ? 70 : 55;
+        $versionCount = count($relevantVersions);
+        if ($versionCount >= 6) {
+            $score -= 20;
+        } elseif ($versionCount >= 4) {
+            $score -= 10;
+        }
+
+        $legacySummary = $version['legacy_version_risk_summary'] ?? null;
+        if (!empty($legacySummary)) {
+            $score -= 10;
+        }
+
+        $releaseCandidateSummary = $version['release_candidate_summary'] ?? [];
+        $releaseCandidateText = strtolower($this->stringOrJson($releaseCandidateSummary, 300) ?? '');
+        if ($releaseCandidateText !== ''
+            && (strpos($releaseCandidateText, 'better monetization') !== false || strpos($releaseCandidateText, 'higher monetization') !== false)
+            && (strpos($releaseCandidateText, 'low sample') !== false || strpos($releaseCandidateText, 'small sample') !== false || strpos($releaseCandidateText, 'caveat') !== false)
+        ) {
+            $score += 5;
+        }
+
+        return $this->clampScore($score);
+    }
+
+    private function mainMetricAtRisk(array $decision): string
+    {
+        $topPriority = strtolower((string) ($decision['top_priority'] ?? ''));
+        if (strpos($topPriority, 'retention') !== false) {
+            return 'd1_logged_rate';
+        }
+
+        return (string) ($decision['operating_decision']['product_decision']['success_metric'] ?? 'workspace_users');
+    }
+
+    private function defaultProductDecision(array $decision): string
+    {
+        $topPriority = strtolower((string) ($decision['top_priority'] ?? ''));
+
+        return strpos($topPriority, 'retention') !== false
+            ? 'prioritize_retention'
+            : 'prioritize_activation';
+    }
+
+    private function defaultProductMetric(array $decision): string
+    {
+        return $this->defaultProductDecision($decision) === 'prioritize_retention'
+            ? 'd1_logged_rate'
+            : 'workspace_users';
+    }
+
+    private function defaultProductReason(array $decision): string
+    {
+        return $this->defaultProductDecision($decision) === 'prioritize_retention'
+            ? 'Early retention is the lead operating priority, while activation still needs guarded improvement.'
+            : 'Activation and early retention are the safest optimization focus.';
+    }
+
+    private function defaultProductNextAction(array $decision): string
+    {
+        return $this->defaultProductDecision($decision) === 'prioritize_retention'
+            ? 'Improve D1 return rate after the first value moment and reduce early drop-off.'
+            : 'Improve session-to-workspace and first-value flow.';
+    }
+
+    private function decisionLabel(string $decision): string
+    {
+        $labels = [
+            'hold_budget' => 'Hold Budget',
+            'continue_with_monitoring' => 'Continue With Monitoring',
+            'prioritize_activation' => 'Prioritize Activation',
+            'prioritize_retention' => 'Prioritize Retention',
+            'keep_current' => 'Keep Current',
+            'monitor_release' => 'Monitor Release',
+        ];
+
+        return $labels[$decision] ?? ucwords(str_replace('_', ' ', $decision));
+    }
+
+    private function decisionConfidenceDefault(string $cardKey, string $decision, array $coreMetrics): int
+    {
+        $retention = $coreMetrics['retention'] ?? [];
+        $monetization = $coreMetrics['monetization'] ?? [];
+
+        if ($cardKey === 'ads_decision' && $decision === 'hold_budget') {
+            return 75;
+        }
+
+        if ($cardKey === 'release_decision' && $decision === 'continue_with_monitoring') {
+            return 70;
+        }
+
+        if ($cardKey === 'product_decision' && $decision === 'prioritize_retention') {
+            return 85;
+        }
+
+        if ($cardKey === 'product_decision' && $decision === 'prioritize_activation') {
+            return 80;
+        }
+
+        if ($cardKey === 'monetization_decision' && $decision === 'keep_current') {
+            $purchaseUsers = (float) ($monetization['purchase_success_users'] ?? 0);
+            return $purchaseUsers >= 10 ? 70 : 65;
+        }
+
+        $d1 = $this->number($retention['d1_logged_rate'] ?? null);
+        return $d1 !== null && $d1 < 20 ? 70 : 60;
+    }
+
+    private function clampScore($value): int
+    {
+        return (int) max(0, min(100, round((float) $value)));
+    }
+
+    private function number($value): ?float
+    {
+        return is_numeric($value) ? (float) $value : null;
+    }
+
+    private function allNumeric(array $values): bool
+    {
+        foreach ($values as $value) {
+            if (!is_numeric($value)) {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     private function limitList($value, int $limit): array

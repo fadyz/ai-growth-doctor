@@ -728,6 +728,9 @@
                                 <div class="text-[11px] text-slate-500">paywall</div>
                             </div>
                         </div>
+                        @if (($businessImpact['calculation_status'] ?? null) === 'missing_input')
+                            <div class="mt-3 text-xs text-amber-700">Uplift estimate unavailable: missing input.</div>
+                        @endif
                     </button>
 
                     <button type="button" @click="openInsight = openInsight === 'debate' ? null : 'debate'" class="bg-white rounded-2xl p-5 shadow-sm border border-slate-200 min-w-0 text-left hover:border-indigo-300 hover:bg-indigo-50/40 transition">
