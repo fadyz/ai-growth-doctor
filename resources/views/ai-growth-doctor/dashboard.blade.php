@@ -61,7 +61,7 @@
         $aiAdsResult = $aiAdsAgent['result'] ?? [];
         $aiTomorrowForecastResult = $aiTomorrowForecastAgent['result'] ?? [];
         $agentRequestMetrics = $analysis['agent_request_metrics'] ?? [];
-        $showRequestMetrics = config('app.debug') || config('ai_growth_doctor.ai.show_request_metrics', false);
+        $showRequestMetrics = config('ai_growth_doctor.ai.show_request_metrics', false);
         $tomorrowForecastMetrics = $metrics['tomorrow_forecast_metrics'] ?? [];
         $adsMetrics = $metrics['ads_metrics'] ?? [];
         $guardrailPolicy = $metrics['guardrail_policy'] ?? [];
