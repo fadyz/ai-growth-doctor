@@ -104,4 +104,32 @@ class TomorrowForecastContextBuilderTest extends TestCase
         $this->assertArrayNotHasKey('source_metrics_context', $compact);
         $this->assertArrayNotHasKey('source_metric_refs', $compact);
     }
+
+    public function testBuildCompactChoosesLatestQualityByForecastDateNotArrayTail(): void
+    {
+        $builder = new TomorrowForecastContextBuilder();
+
+        $compact = $builder->buildCompact([
+            'forecast_evaluations' => [
+                'evaluated' => [
+                    [
+                        'forecast_for_date' => '2026-06-25',
+                        'data_as_of_date' => '2026-06-24',
+                        'summary' => [
+                            'forecast_quality' => 'partially_correct',
+                        ],
+                    ],
+                    [
+                        'forecast_for_date' => '2026-06-13',
+                        'data_as_of_date' => '2026-06-12',
+                        'summary' => [
+                            'forecast_quality' => 'poor',
+                        ],
+                    ],
+                ],
+            ],
+        ]);
+
+        $this->assertSame('partially_correct', $compact['forecast_evaluation_summary']['latest_quality']);
+    }
 }

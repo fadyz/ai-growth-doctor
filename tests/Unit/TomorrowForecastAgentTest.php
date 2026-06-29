@@ -125,4 +125,50 @@ class TomorrowForecastAgentTest extends TestCase
         $this->assertStringContainsString('Monetization remains low-sample.', $result['summary']);
         $this->assertStringContainsString('Scaling should remain cautious and limited to controlled tests.', $result['summary']);
     }
+
+    public function testApplyDeterministicFallbackUsesLatestQualityByForecastDate(): void
+    {
+        config(['ai_growth_doctor.ai.tomorrow_forecast_fallback_enabled' => true]);
+
+        $client = $this->createMock(AiAgentClient::class);
+        $builder = new TomorrowForecastContextBuilder();
+        $agent = new TomorrowForecastAgent($client, $builder);
+
+        $result = $agent->applyDeterministicFallback([
+            'agent' => 'Tomorrow Forecast Agent',
+            'status' => 'exception',
+            'error' => 'timeout',
+        ], [
+            'tomorrow_forecast_metrics' => [
+                'forecast_for_date' => '2026-06-23',
+                'data_as_of_date' => '2026-06-22',
+                'risk_flags' => [],
+            ],
+            'forecast_evaluations' => [
+                'evaluated' => [
+                    [
+                        'forecast_for_date' => '2026-06-25',
+                        'data_as_of_date' => '2026-06-24',
+                        'summary' => [
+                            'forecast_quality' => 'partially_correct',
+                        ],
+                    ],
+                    [
+                        'forecast_for_date' => '2026-06-13',
+                        'data_as_of_date' => '2026-06-12',
+                        'summary' => [
+                            'forecast_quality' => 'poor',
+                        ],
+                    ],
+                ],
+            ],
+            'forecast_model_calibration' => [
+                'decision_instruction' => [
+                    'forecast_role' => 'supporting_guardrail',
+                ],
+            ],
+        ]);
+
+        $this->assertStringContainsString('Latest forecast quality is partially_correct.', $result['summary']);
+    }
 }

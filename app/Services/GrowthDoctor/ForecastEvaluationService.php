@@ -81,6 +81,9 @@ class ForecastEvaluationService
             $evaluated[] = $evaluation;
         }
 
+        $evaluated = $this->sortEvaluationsNewestFirst($evaluated);
+        $latestEvaluation = $evaluated[0] ?? null;
+
         return [
             'status' => 'ok',
             'checkpoint_window_end' => $checkpointWindowEnd,
@@ -90,6 +93,14 @@ class ForecastEvaluationService
             'evaluated_count' => count($evaluated),
             'pending_count' => count($pending),
             'skipped_count' => count($skipped),
+            'latest_evaluation' => $latestEvaluation,
+            'latest_evaluation_meta' => [
+                'selected_by' => 'forecast_for_date_desc',
+                'forecast_for_date' => $latestEvaluation['forecast_for_date'] ?? null,
+                'data_as_of_date' => $latestEvaluation['data_as_of_date'] ?? null,
+                'created_at' => $latestEvaluation['created_at'] ?? null,
+                'forecast_quality' => $latestEvaluation['summary']['forecast_quality'] ?? null,
+            ],
             'evaluated' => $evaluated,
             'pending' => $pending,
             'skipped' => $skipped,
@@ -490,6 +501,58 @@ class ForecastEvaluationService
         });
 
         return $files;
+    }
+
+    private function sortEvaluationsNewestFirst(array $evaluations): array
+    {
+        $sorted = array_values($evaluations);
+
+        usort($sorted, function ($a, $b) {
+            $forecastCompare = $this->compareOptionalDateDesc(
+                $a['forecast_for_date'] ?? null,
+                $b['forecast_for_date'] ?? null
+            );
+
+            if ($forecastCompare !== 0) {
+                return $forecastCompare;
+            }
+
+            $dataAsOfCompare = $this->compareOptionalDateDesc(
+                $a['data_as_of_date'] ?? null,
+                $b['data_as_of_date'] ?? null
+            );
+
+            if ($dataAsOfCompare !== 0) {
+                return $dataAsOfCompare;
+            }
+
+            return $this->compareOptionalDateDesc(
+                $a['created_at'] ?? null,
+                $b['created_at'] ?? null
+            );
+        });
+
+        return $sorted;
+    }
+
+    private function compareOptionalDateDesc(?string $left, ?string $right): int
+    {
+        $leftValue = (string) $left;
+        $rightValue = (string) $right;
+
+        if ($leftValue === '' && $rightValue === '') {
+            return 0;
+        }
+
+        if ($leftValue === '') {
+            return 1;
+        }
+
+        if ($rightValue === '') {
+            return -1;
+        }
+
+        return strcmp($rightValue, $leftValue);
     }
 
     private function evaluationPath(string $forecastForDate, string $dataAsOfDate): string

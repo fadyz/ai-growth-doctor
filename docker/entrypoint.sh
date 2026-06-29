@@ -36,6 +36,7 @@ if ! grep -q '^APP_KEY=base64:' .env; then
 fi
 
 php artisan config:clear --ansi || true
+php artisan view:clear --ansi || true
 
 if [ "${RUN_MIGRATIONS:-false}" = "true" ]; then
     php artisan migrate --force --ansi

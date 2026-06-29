@@ -136,13 +136,13 @@
             ?? ($forecastCalibration['decision_instruction']['forecast_role'] ?? 'not_available');
         $forecastEvaluations = $analysis['evaluations']['forecast_evaluations'] ?? [];
         $evaluatedForecasts = $forecastEvaluations['evaluated'] ?? [];
-        $latestForecastEvaluation = !empty($evaluatedForecasts) ? end($evaluatedForecasts) : [];
+        $latestForecastEvaluation = $forecastEvaluations['latest_evaluation'] ?? ($evaluatedForecasts[0] ?? []);
         $latestRetentionForecastEvaluation = [];
         $latestAnyRetentionForecastEvaluation = [];
         $actualDataAvailableUntilForRetention = (string) ($forecastEvaluations['actual_data_available_until'] ?? '');
         $latestRetentionEligibleByAge = [];
 
-        foreach (array_reverse($evaluatedForecasts ?? []) as $evaluation) {
+        foreach (($evaluatedForecasts ?? []) as $evaluation) {
             $metricRows = $evaluation['metric_evaluations'] ?? [];
             $hasRetentionMetric = false;
             $hasMatureRetentionMetric = false;
@@ -778,6 +778,11 @@
                                         @if (!empty($latestRetentionForecastEvaluation['forecast_for_date']))
                                             <div class="text-xs text-emerald-700 mt-1">
                                                 Retention panel source: forecast {{ $latestRetentionForecastEvaluation['forecast_for_date'] ?? '-' }} from data {{ $latestRetentionForecastEvaluation['data_as_of_date'] ?? '-' }}
+                                            </div>
+                                        @endif
+                                        @if (!empty($forecastEvaluations['latest_evaluation_meta']['selected_by']))
+                                            <div class="text-xs text-emerald-700 mt-1">
+                                                Selected latest by {{ $forecastEvaluations['latest_evaluation_meta']['selected_by'] ?? '-' }} · actual available until {{ $forecastEvaluations['actual_data_available_until'] ?? '-' }}
                                             </div>
                                         @endif
                                     </div>

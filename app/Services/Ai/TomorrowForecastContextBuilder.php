@@ -71,8 +71,37 @@ class TomorrowForecastContextBuilder
     private function latestForecastQuality(array $forecastEvaluation): ?string
     {
         $evaluated = $forecastEvaluation['evaluated'] ?? [];
-        $latest = !empty($evaluated) ? end($evaluated) : [];
+        $latest = $this->latestForecastEvaluation($evaluated);
 
         return $latest['summary']['forecast_quality'] ?? ($forecastEvaluation['latest_evaluation']['summary']['forecast_quality'] ?? null);
+    }
+
+    private function latestForecastEvaluation(array $evaluated): array
+    {
+        $valid = array_values(array_filter($evaluated, function ($row) {
+            return is_array($row) && !empty($row['forecast_for_date']);
+        }));
+
+        if (empty($valid)) {
+            return is_array($evaluated[0] ?? null) ? $evaluated[0] : [];
+        }
+
+        usort($valid, function ($a, $b) {
+            $dateCompare = strcmp((string) ($b['forecast_for_date'] ?? ''), (string) ($a['forecast_for_date'] ?? ''));
+
+            if ($dateCompare !== 0) {
+                return $dateCompare;
+            }
+
+            $dataAsOfCompare = strcmp((string) ($b['data_as_of_date'] ?? ''), (string) ($a['data_as_of_date'] ?? ''));
+
+            if ($dataAsOfCompare !== 0) {
+                return $dataAsOfCompare;
+            }
+
+            return strcmp((string) ($b['created_at'] ?? ''), (string) ($a['created_at'] ?? ''));
+        });
+
+        return $valid[0] ?? [];
     }
 }
