@@ -22,7 +22,33 @@ Live demo:
 https://agd.hitungkalori.com
 ```
 
+
 The hosted demo is protected with HTTP Basic Auth. Use the judge/demo credentials provided with the submission to access the live URL.
+
+## Alibaba Cloud Deployment Proof
+
+Short deployment proof recording:
+
+```text
+https://youtu.be/Q7RbNFY5t1Y
+```
+
+This recording is separate from the main product demo and demonstrates that the AI Growth Doctor backend is running on Alibaba Cloud ECS.
+
+Alibaba Cloud services used by this project:
+
+- Alibaba Cloud ECS for hosting the Laravel backend.
+- Alibaba Cloud Qwen / DashScope OpenAI-compatible API for LLM agent execution.
+
+Code references demonstrating Alibaba Cloud / Qwen API usage:
+
+```text
+app/Services/GrowthDoctor/Agents/AiAgentClient.php
+config/services.php
+config/ai_growth_doctor.php
+```
+
+The Qwen / DashScope endpoint is configured through environment variables such as `AI_PROVIDER`, `QWEN_BASE_URL`, and `QWEN_DEFAULT_MODEL`.
 
 ## What It Answers
 
