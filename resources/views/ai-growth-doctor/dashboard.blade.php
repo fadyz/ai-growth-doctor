@@ -526,7 +526,7 @@
             </div>
         </div>
 
-        <!--@if ($showRequestMetrics && !empty($agentRequestMetrics))
+        {{-- @if ($showRequestMetrics && !empty($agentRequestMetrics))
             <div class="bg-white rounded-2xl mb-8 shadow-sm border border-slate-200 overflow-hidden">
                 <div class="px-6 py-4 border-b border-slate-200">
                     <h2 class="text-lg font-bold">AI Request Size</h2>
@@ -567,7 +567,7 @@
                     </table>
                 </div>
             </div>
-        @endif-->
+        @endif --}}
 
         @if (!empty($operatingDecision))
             <div class="mb-8" x-data="{ openDecision: null }">
