@@ -526,49 +526,6 @@
             </div>
         </div>
 
-        {{-- @if ($showRequestMetrics && !empty($agentRequestMetrics))
-            <div class="bg-white rounded-2xl mb-8 shadow-sm border border-slate-200 overflow-hidden">
-                <div class="px-6 py-4 border-b border-slate-200">
-                    <h2 class="text-lg font-bold">AI Request Size</h2>
-                    <p class="text-sm text-slate-500">Debug-only request sizing and timing for each LLM-backed agent call.</p>
-                </div>
-                <div class="overflow-x-auto">
-                    <table class="min-w-full text-sm">
-                        <thead class="bg-slate-50 text-slate-500">
-                            <tr>
-                                <th class="text-left px-4 py-3">Agent</th>
-                                <th class="text-left px-4 py-3">Model</th>
-                                <th class="text-right px-4 py-3">Payload KB</th>
-                                <th class="text-right px-4 py-3">Estimated Tokens</th>
-                                <th class="text-right px-4 py-3">Timeout</th>
-                                <th class="text-right px-4 py-3">Duration</th>
-                                <th class="text-left px-4 py-3">Context</th>
-                                <th class="text-left px-4 py-3">Status</th>
-                            </tr>
-                        </thead>
-                        <tbody class="divide-y divide-slate-100">
-                            @foreach ($agentRequestMetrics as $agentKey => $requestMetric)
-                                <tr>
-                                    <td class="px-4 py-3 font-medium text-slate-900">{{ strtoupper(str_replace('_', ' ', $agentKey)) }}</td>
-                                    <td class="px-4 py-3 text-slate-600">{{ $displayShortValue($requestMetric['model'] ?? '-') }}</td>
-                                    <td class="px-4 py-3 text-right">{{ isset($requestMetric['payload_bytes']) ? number_format(((float) $requestMetric['payload_bytes']) / 1024, 1) : '-' }}</td>
-                                    <td class="px-4 py-3 text-right">{{ $requestMetric['estimated_tokens'] ?? '-' }}</td>
-                                    <td class="px-4 py-3 text-right">{{ $requestMetric['timeout_seconds'] ?? '-' }}s</td>
-                                    <td class="px-4 py-3 text-right">{{ isset($requestMetric['duration_ms']) ? number_format(((float) $requestMetric['duration_ms']) / 1000, 2) . 's' : '-' }}</td>
-                                    <td class="px-4 py-3 text-slate-600">{{ $displayShortValue($requestMetric['context_mode'] ?? '-') }}</td>
-                                    <td class="px-4 py-3">
-                                        <span class="inline-flex rounded-full px-2.5 py-1 text-[11px] font-semibold {{ $statusBadgeClass($requestMetric['status'] ?? 'unknown') }}">
-                                            {{ strtoupper(str_replace('_', ' ', $displayShortValue($requestMetric['status'] ?? 'unknown'))) }}
-                                        </span>
-                                    </td>
-                                </tr>
-                            @endforeach
-                        </tbody>
-                    </table>
-                </div>
-            </div>
-        @endif --}}
-
         @if (!empty($operatingDecision))
             <div class="mb-8" x-data="{ openDecision: null }">
                 <div class="flex flex-col md:flex-row md:items-end md:justify-between gap-3 mb-4">
