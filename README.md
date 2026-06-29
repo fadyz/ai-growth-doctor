@@ -22,6 +22,12 @@ Live demo:
 https://agd.hitungkalori.com
 ```
 
+## HTTP Basic Auth
+
+```text
+Username: judge
+Password: AGD-qwen
+```
 
 The hosted demo is protected with HTTP Basic Auth. Use the judge/demo credentials provided with the submission to access the live URL.
 
