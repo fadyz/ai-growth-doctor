@@ -627,7 +627,7 @@ class AiGrowthDoctorController extends Controller
 
     private function compactEvaluations(array $evaluations): array
     {
-        $forecastEvaluations = $evaluations['forecast_evaluations'] ?? [];
+        $forecastEvaluations = $this->normalizeForecastEvaluationsForDisplay($evaluations['forecast_evaluations'] ?? []);
         $calibration = $evaluations['forecast_model_calibration'] ?? [];
 
         return [
@@ -638,6 +638,7 @@ class AiGrowthDoctorController extends Controller
                 'pending_count' => $forecastEvaluations['pending_count'] ?? null,
                 'skipped_count' => $forecastEvaluations['skipped_count'] ?? null,
                 'latest_evaluation' => $forecastEvaluations['latest_evaluation'] ?? null,
+                'latest_evaluation_meta' => $forecastEvaluations['latest_evaluation_meta'] ?? null,
                 'evaluated' => array_slice($forecastEvaluations['evaluated'] ?? [], 0, 3),
                 'pending' => array_slice($forecastEvaluations['pending'] ?? [], 0, 3),
                 'skipped' => array_slice($forecastEvaluations['skipped'] ?? [], 0, 3),
@@ -652,6 +653,82 @@ class AiGrowthDoctorController extends Controller
             ],
         ];
     }
+
+    private function normalizeForecastEvaluationsForDisplay(array $forecastEvaluations): array
+    {
+        $evaluated = is_array($forecastEvaluations['evaluated'] ?? null)
+            ? array_values($forecastEvaluations['evaluated'])
+            : [];
+
+        usort($evaluated, function ($a, $b) {
+            $forecastCompare = $this->compareOptionalDateDesc(
+                $a['forecast_for_date'] ?? null,
+                $b['forecast_for_date'] ?? null
+            );
+
+            if ($forecastCompare !== 0) {
+                return $forecastCompare;
+            }
+
+            $dataAsOfCompare = $this->compareOptionalDateDesc(
+                $a['data_as_of_date'] ?? null,
+                $b['data_as_of_date'] ?? null
+            );
+
+            if ($dataAsOfCompare !== 0) {
+                return $dataAsOfCompare;
+            }
+
+            return $this->compareOptionalDateDesc(
+                $a['created_at'] ?? null,
+                $b['created_at'] ?? null
+            );
+        });
+
+        $latestEvaluation = is_array($forecastEvaluations['latest_evaluation'] ?? null)
+            ? $forecastEvaluations['latest_evaluation']
+            : ($evaluated[0] ?? null);
+
+        if (!is_array($latestEvaluation) || empty($latestEvaluation)) {
+            $latestEvaluation = $evaluated[0] ?? null;
+        }
+
+        $forecastEvaluations['evaluated'] = $evaluated;
+        $forecastEvaluations['latest_evaluation'] = $latestEvaluation;
+
+        if (!isset($forecastEvaluations['latest_evaluation_meta']) || !is_array($forecastEvaluations['latest_evaluation_meta'])) {
+            $forecastEvaluations['latest_evaluation_meta'] = [
+                'selected_by' => 'forecast_for_date_desc',
+                'forecast_for_date' => $latestEvaluation['forecast_for_date'] ?? null,
+                'data_as_of_date' => $latestEvaluation['data_as_of_date'] ?? null,
+                'created_at' => $latestEvaluation['created_at'] ?? null,
+                'forecast_quality' => $latestEvaluation['summary']['forecast_quality'] ?? null,
+            ];
+        }
+
+        return $forecastEvaluations;
+    }
+
+    private function compareOptionalDateDesc(?string $left, ?string $right): int
+    {
+        $leftValue = (string) $left;
+        $rightValue = (string) $right;
+
+        if ($leftValue === '' && $rightValue === '') {
+            return 0;
+        }
+
+        if ($leftValue === '') {
+            return 1;
+        }
+
+        if ($rightValue === '') {
+            return -1;
+        }
+
+        return strcmp($rightValue, $leftValue);
+    }
+
     private function archiveCheckpointSnapshot(array $checkpoint): void
     {
         $meta = $checkpoint['meta'] ?? [];
