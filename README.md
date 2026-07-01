@@ -35,6 +35,11 @@ The hosted demo is protected with HTTP Basic Auth. Use the judge/demo credential
 
 Short deployment proof recording:
 
+Visual evidence:
+
+![Alibaba Cloud ECS Running Instance 1](docs/screenshot/ai-growth-doctor-alibaba1.png)
+![Alibaba Cloud ECS Running Instance 2](docs/screenshot/ai-growth-doctor-alibaba2.png)
+
 ```text
 https://youtu.be/Q7RbNFY5t1Y
 ```
