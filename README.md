@@ -14,6 +14,14 @@ config/ai_growth_doctor.php
 
 The goal is not to automate business decisions blindly. The goal is to make the daily growth decision clearer, safer, and easier for a human operator to review.
 
+## System Presentation
+
+Demo Presentation recording:
+
+```text
+https://youtu.be/Li6qdaY_1es
+```
+
 ## Judge Quick Check
 
 Live demo:
@@ -33,12 +41,13 @@ The hosted demo is protected with HTTP Basic Auth. Use the judge/demo credential
 
 ## Alibaba Cloud Deployment Proof
 
-Short deployment proof recording:
-
 Visual evidence:
 
 ![Alibaba Cloud ECS Running Instance 1](docs/screenshot/ai-growth-doctor-alibaba1.png)
 ![Alibaba Cloud ECS Running Instance 2](docs/screenshot/ai-growth-doctor-alibaba2.png)
+
+
+Short deployment proof recording:
 
 ```text
 https://youtu.be/Q7RbNFY5t1Y
