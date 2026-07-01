@@ -137,6 +137,27 @@
         $forecastEvaluations = $analysis['evaluations']['forecast_evaluations'] ?? [];
         $evaluatedForecasts = $forecastEvaluations['evaluated'] ?? [];
         $latestForecastEvaluation = $forecastEvaluations['latest_evaluation'] ?? ($evaluatedForecasts[0] ?? []);
+        $latestForecastEvaluationSummary = $latestForecastEvaluation['summary'] ?? [];
+        $forecastEvaluationDecisionImpact = array_merge([
+            'evaluation_available' => !empty($latestForecastEvaluation) || !empty($forecastEvaluationDecisionImpact),
+            'actual_data_available_until' => $latestForecastEvaluation['actual_data_available_until'] ?? ($forecastEvaluations['actual_data_available_until'] ?? null),
+            'latest_hit_rate' => $latestForecastEvaluationSummary['hit_rate'] ?? null,
+            'latest_forecast_for_date' => $latestForecastEvaluation['forecast_for_date'] ?? null,
+            'latest_forecast_quality' => $latestForecastEvaluationSummary['forecast_quality'] ?? ($forecastEvaluations['status'] ?? 'not_available'),
+            'metrics_pending_maturity' => $latestForecastEvaluationSummary['metrics_pending_maturity'] ?? ($forecastEvaluations['pending_count'] ?? 0),
+            'main_misses' => array_values(array_map(function ($miss) {
+                if (!is_array($miss)) {
+                    return $miss;
+                }
+
+                return trim(implode(' ', array_filter([
+                    $miss['metric'] ?? null,
+                    $miss['quality'] ?? null,
+                ], function ($value) {
+                    return is_string($value) && trim($value) !== '';
+                })));
+            }, $latestForecastEvaluationSummary['main_misses'] ?? [])),
+        ], $forecastEvaluationDecisionImpact);
         $latestRetentionForecastEvaluation = [];
         $latestAnyRetentionForecastEvaluation = [];
         $actualDataAvailableUntilForRetention = (string) ($forecastEvaluations['actual_data_available_until'] ?? '');

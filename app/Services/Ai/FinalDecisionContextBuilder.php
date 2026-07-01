@@ -301,11 +301,29 @@ class FinalDecisionContextBuilder
     {
         $evaluated = is_array($evaluations['evaluated'] ?? null) ? $evaluations['evaluated'] : [];
         $latest = $this->latestByDate($evaluated, 'forecast_for_date');
+        $latestSummary = is_array($latest['summary'] ?? null) ? $latest['summary'] : [];
+        $mainMisses = is_array($latestSummary['main_misses'] ?? null) ? $latestSummary['main_misses'] : [];
 
         return [
             'evaluated_count' => $evaluations['evaluated_count'] ?? count($evaluated),
             'pending_count' => $evaluations['pending_count'] ?? count($evaluations['pending'] ?? []),
+            'actual_data_available_until' => $latest['actual_data_available_until'] ?? ($evaluations['actual_data_available_until'] ?? null),
+            'latest_forecast_for_date' => $latest['forecast_for_date'] ?? null,
             'latest_quality' => $latest['summary']['forecast_quality'] ?? ($evaluations['status'] ?? null),
+            'latest_hit_rate' => $latestSummary['hit_rate'] ?? null,
+            'metrics_pending_maturity' => $latestSummary['metrics_pending_maturity'] ?? null,
+            'main_misses' => array_values(array_map(function ($miss) {
+                if (!is_array($miss)) {
+                    return $miss;
+                }
+
+                return trim(implode(' ', array_filter([
+                    $miss['metric'] ?? null,
+                    $miss['quality'] ?? null,
+                ], function ($value) {
+                    return is_string($value) && trim($value) !== '';
+                })));
+            }, $mainMisses)),
         ];
     }
 

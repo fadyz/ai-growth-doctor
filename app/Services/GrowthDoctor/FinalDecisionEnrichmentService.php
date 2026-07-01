@@ -271,12 +271,15 @@ class FinalDecisionEnrichmentService
     {
         return [
             'evaluation_available' => !empty($evaluation),
+            'actual_data_available_until' => $evaluation['actual_data_available_until'] ?? null,
+            'latest_forecast_for_date' => $evaluation['latest_forecast_for_date'] ?? null,
             'latest_forecast_quality' => $evaluation['latest_quality'] ?? 'not_available',
+            'latest_hit_rate' => $evaluation['latest_hit_rate'] ?? null,
             'pending_count' => $evaluation['pending_count'] ?? null,
             'evaluated_count' => $evaluation['evaluated_count'] ?? null,
-            'metrics_pending_maturity' => $evaluation['pending_count'] ?? null,
+            'metrics_pending_maturity' => $evaluation['metrics_pending_maturity'] ?? ($evaluation['pending_count'] ?? null),
             'maturity_interpretation' => 'Pending cohort-lagged metrics should not be treated as forecast misses.',
-            'main_misses' => [],
+            'main_misses' => $evaluation['main_misses'] ?? [],
             'impact_on_today_decision' => 'Evaluation evidence adjusts confidence in forecast cautions only.',
         ];
     }
